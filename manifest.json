@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "id": "kindlebrew",
+  "name": "Kindlebrew",
+  "description": "KPM packages for jailbroken Kindle devices using hdnext/KPM.",
+  "packages": {
+    "gambatte-k2": {
+      "name": "Gambatte-K2",
+      "author": "crazy-electron",
+      "description": "Game Boy, Game Boy Color and Game Boy Advance emulator frontend for Kindle e-ink devices.",
+      "artifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/berruetaa/kindlebrew/main/packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg",
+          "version": [1, 0, 0],
+          "dependencies": [],
+          "supported_platforms": ["kindlehf"]
+        }
+      ]
+    }
+  }
+}
