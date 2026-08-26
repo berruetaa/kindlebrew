@@ -16,6 +16,45 @@
           "supported_platforms": ["kindlehf"]
         }
       ]
+    },
+    "wordle": {
+      "name": "KWordle",
+      "author": "crizmo",
+      "description": "Wordle for Kindle, installed from the official KWordle v1.5.0 release.",
+      "artifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/berruetaa/kindlebrew/main/packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg",
+          "version": [1, 5, 0],
+          "dependencies": [],
+          "supported_platforms": ["kindlehf"]
+        }
+      ]
+    },
+    "chess": {
+      "name": "GNOME Chess",
+      "author": "crazy-electron / GNOME",
+      "description": "GNOME Chess for Kindle with Stockfish 11 from GnomeGames4Kindle v1.1.",
+      "artifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/berruetaa/kindlebrew/main/packages/chess/artifacts/chess_1.1.0_kindlehf.kpkg",
+          "version": [1, 1, 0],
+          "dependencies": [],
+          "supported_platforms": ["kindlehf"]
+        }
+      ]
+    },
+    "mines": {
+      "name": "GNOME Mines",
+      "author": "crazy-electron / GNOME",
+      "description": "Classic Minesweeper for Kindle from GnomeGames4Kindle v1.1.",
+      "artifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/berruetaa/kindlebrew/main/packages/mines/artifacts/mines_1.1.0_kindlehf.kpkg",
+          "version": [1, 1, 0],
+          "dependencies": [],
+          "supported_platforms": ["kindlehf"]
+        }
+      ]
     }
   }
 }
