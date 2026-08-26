@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "id": "chess",
+  "name": "GNOME Chess",
+  "author": "crazy-electron / GNOME",
+  "description": "GNOME Chess for Kindle with Stockfish 11, installed from the official GnomeGames4Kindle release.",
+  "version": [1, 1, 0],
+  "dependencies": [],
+  "supported_platforms": ["kindlehf"]
+}
