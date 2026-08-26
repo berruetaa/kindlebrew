@@ -1,0 +1,102 @@
+name: Build Gambatte-K2 KPM package
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package-src/gambatte-k2/**'
+      - '.github/workflows/build-gambatte-k2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download and verify upstream release
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build
+          mkdir -p build/upstream build/pkg packages/gambatte-k2/artifacts
+          curl -fL --retry 3 \
+            -o build/gambatte-k2.zip \
+            https://github.com/crazy-electron/gambatte-k2/releases/download/1.0/gambatte-k2.zip
+          echo '7f2e06df82b2f82dcf51858df8ecdca940aed7417ea6714403c6c567d95c35a6  build/gambatte-k2.zip' | sha256sum -c -
+          unzip -q build/gambatte-k2.zip -d build/upstream
+
+      - name: Normalize upstream extension payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          shortcut="$(find build/upstream -type f -name 'shortcut_gambatte-k2.sh' -print -quit)"
+          if [[ -z "$shortcut" ]]; then
+            echo 'Could not locate shortcut_gambatte-k2.sh in upstream release' >&2
+            find build/upstream -maxdepth 4 -type f -print >&2
+            exit 1
+          fi
+          extroot="$(dirname "$shortcut")"
+          mkdir -p build/pkg/payload
+          cp -a "$extroot"/. build/pkg/payload/
+          test -f build/pkg/payload/shortcut_gambatte-k2.sh
+
+      - name: Assemble KPM package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp package-src/gambatte-k2/manifest.json build/pkg/manifest.json
+          cp package-src/gambatte-k2/install.sh build/pkg/install.sh
+          cp package-src/gambatte-k2/launch.sh build/pkg/launch.sh
+          cp package-src/gambatte-k2/uninstall.sh build/pkg/uninstall.sh
+          chmod 755 build/pkg/install.sh build/pkg/launch.sh build/pkg/uninstall.sh
+          curl -fL --retry 3 \
+            -o build/pkg/LICENSE.upstream \
+            https://raw.githubusercontent.com/crazy-electron/gambatte-k2/1.0/LICENSE
+          tar -czf packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg -C build/pkg .
+
+      - name: Validate package and repository manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg > build/package-list.txt
+          grep -q 'manifest.json' build/package-list.txt
+          grep -q 'payload/shortcut_gambatte-k2.sh' build/package-list.txt
+          python - <<'PY'
+          import json, tarfile
+          p='packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg'
+          with tarfile.open(p, 'r:gz') as t:
+              names=set(t.getnames())
+              name='./manifest.json' if './manifest.json' in names else 'manifest.json'
+              m=json.load(t.extractfile(name))
+          assert m['manifest_version'] == 2
+          assert m['id'] == 'gambatte-k2'
+          assert m['supported_platforms'] == ['kindlehf']
+          with open('manifest.json', encoding='utf-8') as f:
+              repo=json.load(f)
+          artifact=repo['packages']['gambatte-k2']['artifacts'][0]
+          assert artifact['url'] == 'https://raw.githubusercontent.com/berruetaa/kindlebrew/main/packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg'
+          assert artifact['version'] == [1, 0, 0]
+          assert artifact['supported_platforms'] == ['kindlehf']
+          print('validated', p)
+          PY
+          sha256sum packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg
+
+      - name: Commit built package
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg
+          if git diff --cached --quiet; then
+            echo 'Package unchanged.'
+            exit 0
+          fi
+          git commit -m 'build: package Gambatte-K2 1.0.0 for KPM'
+          git push
