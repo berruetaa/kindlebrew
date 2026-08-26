@@ -5,9 +5,17 @@ URL="https://github.com/crizmo/KWordle/releases/download/v1.5.0/kwordle.zip"
 SHA256="1755b33c5d0724bacb025ffd44256c7116463e985e82cc45a5f8025c29ad563f"
 TMP="/mnt/us/.kindlebrew-wordle"
 DOCS="/mnt/us/documents"
+TARGET="$DOCS/kwordle"
+SCRIPT="$DOCS/kwordle.sh"
+MARKER="$TARGET/.kindlebrew-managed"
 
 if [ "${KPM_PLATFORM:-}" != "kindlehf" ]; then
   echo "KWordle package supports kindlehf only (got: ${KPM_PLATFORM:-unknown})."
+  exit 1
+fi
+
+if { [ -e "$TARGET" ] || [ -e "$SCRIPT" ]; } && [ ! -f "$MARKER" ]; then
+  echo "Existing KWordle installation is not managed by Kindlebrew; refusing to overwrite it."
   exit 1
 fi
 
@@ -31,10 +39,11 @@ if [ -z "$KWORDLE_DIR" ] || [ -z "$KWORDLE_SCRIPT" ]; then
   exit 1
 fi
 
-rm -rf "$DOCS/kwordle"
-cp -R "$KWORDLE_DIR" "$DOCS/kwordle"
-cp "$KWORDLE_SCRIPT" "$DOCS/kwordle.sh"
-chmod 755 "$DOCS/kwordle.sh" 2>/dev/null || true
+rm -rf "$TARGET"
+cp -R "$KWORDLE_DIR" "$TARGET"
+printf '%s\n' 'managed-by=kindlebrew' > "$MARKER"
+cp "$KWORDLE_SCRIPT" "$SCRIPT"
+chmod 755 "$SCRIPT" 2>/dev/null || true
 
 rm -rf "$TMP"
 echo "KWordle installed. Open KWordle from the Kindle library or run ;kpm launch wordle."
