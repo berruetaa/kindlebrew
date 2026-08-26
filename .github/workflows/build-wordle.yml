@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: kindlebrew-package-writers
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
