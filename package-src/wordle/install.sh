@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+URL="https://github.com/crizmo/KWordle/releases/download/v1.5.0/kwordle.zip"
+SHA256="1755b33c5d0724bacb025ffd44256c7116463e985e82cc45a5f8025c29ad563f"
+TMP="/mnt/us/.kindlebrew-wordle"
+DOCS="/mnt/us/documents"
+
+if [ "${KPM_PLATFORM:-}" != "kindlehf" ]; then
+  echo "KWordle package supports kindlehf only (got: ${KPM_PLATFORM:-unknown})."
+  exit 1
+fi
+
+command -v curl >/dev/null 2>&1 || { echo "curl is required."; exit 1; }
+command -v unzip >/dev/null 2>&1 || { echo "unzip is required."; exit 1; }
+command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required."; exit 1; }
+
+rm -rf "$TMP"
+mkdir -p "$TMP" "$DOCS"
+
+curl -fL --retry 3 -o "$TMP/kwordle.zip" "$URL"
+echo "$SHA256  $TMP/kwordle.zip" | sha256sum -c -
+unzip -q "$TMP/kwordle.zip" -d "$TMP/unpacked"
+
+KWORDLE_DIR="$(find "$TMP/unpacked" -type d -name kwordle -print -quit)"
+KWORDLE_SCRIPT="$(find "$TMP/unpacked" -type f -name kwordle.sh -print -quit)"
+
+if [ -z "$KWORDLE_DIR" ] || [ -z "$KWORDLE_SCRIPT" ]; then
+  echo "Unexpected KWordle archive layout."
+  rm -rf "$TMP"
+  exit 1
+fi
+
+rm -rf "$DOCS/kwordle"
+cp -R "$KWORDLE_DIR" "$DOCS/kwordle"
+cp "$KWORDLE_SCRIPT" "$DOCS/kwordle.sh"
+chmod 755 "$DOCS/kwordle.sh" 2>/dev/null || true
+
+rm -rf "$TMP"
+echo "KWordle installed. Open KWordle from the Kindle library or run ;kpm launch wordle."
