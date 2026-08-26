@@ -12,6 +12,11 @@ if [ "${KPM_PLATFORM:-}" != "kindlehf" ]; then
   exit 1
 fi
 
+if [ -e "$TARGET" ] && [ ! -f "$TARGET/.kindlebrew-managed" ]; then
+  echo "Existing GnomeGames installation is not managed by Kindlebrew; refusing to overwrite it."
+  exit 1
+fi
+
 command -v curl >/dev/null 2>&1 || { echo "curl is required."; exit 1; }
 command -v unzip >/dev/null 2>&1 || { echo "unzip is required."; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required."; exit 1; }
