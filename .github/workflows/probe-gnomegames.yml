@@ -1,0 +1,22 @@
+name: Probe GnomeGames upstream
+
+on:
+  push:
+    branches:
+      - feat/more-games
+    paths:
+      - '.github/workflows/probe-gnomegames.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and inspect upstream release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o gnomegames.zip https://github.com/crazy-electron/GnomeGames4Kindle/releases/download/v1.1/gnomegames.zip
+          echo '=== SHA256 ==='
+          sha256sum gnomegames.zip
+          echo '=== ZIP LAYOUT ==='
+          unzip -l gnomegames.zip | sed -n '1,160p'
