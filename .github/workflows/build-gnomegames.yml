@@ -1,0 +1,92 @@
+name: Build GNOME games KPM packages
+
+on:
+  push:
+    branches:
+      - main
+      - feat/more-games
+    paths:
+      - 'package-src/chess/**'
+      - 'package-src/mines/**'
+      - '.github/workflows/build-gnomegames.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify upstream GnomeGames release
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/upstream-gnomegames
+          mkdir -p build/upstream-gnomegames
+          curl -fL --retry 3 \
+            -o build/upstream-gnomegames/gnomegames.zip \
+            https://github.com/crazy-electron/GnomeGames4Kindle/releases/download/v1.1/gnomegames.zip
+          echo '3ac019bcca2634d0cc68ca141462eaa26cf357ee1247c0099fea939f74969448  build/upstream-gnomegames/gnomegames.zip' | sha256sum -c -
+          unzip -q build/upstream-gnomegames/gnomegames.zip -d build/upstream-gnomegames/unpacked
+          test -f build/upstream-gnomegames/unpacked/gnomegames/bin/gnomegames.sh
+          test -f build/upstream-gnomegames/unpacked/gnomegames/bin/armhf/glchess
+          test -f build/upstream-gnomegames/unpacked/gnomegames/bin/armhf/gnomine
+          test -f build/upstream-gnomegames/unpacked/gnomegames/shortcut_gnomechess.sh
+          test -f build/upstream-gnomegames/unpacked/gnomegames/shortcut_gnomine.sh
+
+      - name: Assemble KPM wrappers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pkg in chess mines; do
+            rm -rf "build/$pkg"
+            mkdir -p "build/$pkg" "packages/$pkg/artifacts"
+            cp "package-src/$pkg/manifest.json" "build/$pkg/manifest.json"
+            cp "package-src/$pkg/install.sh" "build/$pkg/install.sh"
+            cp "package-src/$pkg/launch.sh" "build/$pkg/launch.sh"
+            cp "package-src/$pkg/uninstall.sh" "build/$pkg/uninstall.sh"
+            chmod 755 "build/$pkg/install.sh" "build/$pkg/launch.sh" "build/$pkg/uninstall.sh"
+            tar -czf "packages/$pkg/artifacts/${pkg}_1.1.0_kindlehf.kpkg" -C "build/$pkg" .
+          done
+
+      - name: Validate packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, tarfile
+          for pkg in ('chess', 'mines'):
+              p=f'packages/{pkg}/artifacts/{pkg}_1.1.0_kindlehf.kpkg'
+              with tarfile.open(p, 'r:gz') as t:
+                  names=set(t.getnames())
+                  for required in ('manifest.json','install.sh','launch.sh','uninstall.sh'):
+                      assert required in names or './'+required in names, (pkg, required)
+                  assert not any(n.startswith('payload') or n.startswith('./payload') for n in names), 'upstream payload must not be redistributed'
+                  mf='./manifest.json' if './manifest.json' in names else 'manifest.json'
+                  m=json.load(t.extractfile(mf))
+              assert m['manifest_version'] == 2
+              assert m['id'] == pkg
+              assert m['version'] == [1,1,0]
+              assert m['supported_platforms'] == ['kindlehf']
+              print('validated', p)
+          PY
+          sha256sum packages/chess/artifacts/chess_1.1.0_kindlehf.kpkg
+          sha256sum packages/mines/artifacts/mines_1.1.0_kindlehf.kpkg
+
+      - name: Commit built packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/chess/artifacts/chess_1.1.0_kindlehf.kpkg
+          git add packages/mines/artifacts/mines_1.1.0_kindlehf.kpkg
+          if git diff --cached --quiet; then
+            echo 'Packages unchanged.'
+            exit 0
+          fi
+          git commit -m 'build: package GNOME Chess and Mines KPM wrappers'
+          git push

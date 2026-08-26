@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "id": "wordle",
+  "name": "KWordle",
+  "author": "crizmo",
+  "description": "Wordle for Kindle. Kindlebrew installs the official upstream release without redistributing its unlicensed source.",
+  "version": [1, 5, 0],
+  "dependencies": [],
+  "supported_platforms": ["kindlehf"]
+}
