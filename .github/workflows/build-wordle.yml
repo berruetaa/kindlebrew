@@ -1,0 +1,69 @@
+name: Build Wordle KPM package
+
+on:
+  push:
+    branches:
+      - main
+      - feat/more-games
+    paths:
+      - 'package-src/wordle/**'
+      - '.github/workflows/build-wordle.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Assemble KPM package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/wordle
+          mkdir -p build/wordle packages/wordle/artifacts
+          cp package-src/wordle/manifest.json build/wordle/manifest.json
+          cp package-src/wordle/install.sh build/wordle/install.sh
+          cp package-src/wordle/launch.sh build/wordle/launch.sh
+          cp package-src/wordle/uninstall.sh build/wordle/uninstall.sh
+          chmod 755 build/wordle/install.sh build/wordle/launch.sh build/wordle/uninstall.sh
+          tar -czf packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg -C build/wordle .
+
+      - name: Validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, tarfile
+          p='packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg'
+          with tarfile.open(p, 'r:gz') as t:
+              names=set(t.getnames())
+              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh'):
+                  assert required in names or './'+required in names, required
+              assert not any(n.startswith('payload') or n.startswith('./payload') for n in names), 'upstream payload must not be redistributed'
+              mf='./manifest.json' if './manifest.json' in names else 'manifest.json'
+              m=json.load(t.extractfile(mf))
+          assert m['manifest_version'] == 2
+          assert m['id'] == 'wordle'
+          assert m['version'] == [1,5,0]
+          assert m['supported_platforms'] == ['kindlehf']
+          print('validated', p)
+          PY
+          sha256sum packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg
+
+      - name: Commit built package
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg
+          if git diff --cached --quiet; then
+            echo 'Package unchanged.'
+            exit 0
+          fi
+          git commit -m 'build: package Wordle 1.5.0 KPM wrapper'
+          git push
