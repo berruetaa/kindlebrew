@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/more-games
     paths:
       - 'package-src/chess/**'
       - 'package-src/mines/**'
@@ -23,6 +22,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Verify upstream GnomeGames release
         shell: bash
@@ -53,7 +54,9 @@ jobs:
             cp "package-src/$pkg/launch.sh" "build/$pkg/launch.sh"
             cp "package-src/$pkg/uninstall.sh" "build/$pkg/uninstall.sh"
             chmod 755 "build/$pkg/install.sh" "build/$pkg/launch.sh" "build/$pkg/uninstall.sh"
-            tar -czf "packages/$pkg/artifacts/${pkg}_1.1.0_kindlehf.kpkg" -C "build/$pkg" .
+            tar --format=ustar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+              -cf - -C "build/$pkg" . \
+              | gzip -n > "packages/$pkg/artifacts/${pkg}_1.1.0_kindlehf.kpkg"
           done
 
       - name: Validate packages
