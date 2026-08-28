@@ -69,11 +69,16 @@ int kb_timer_pop_due(KBGame *game, KBEvent *event, uint64_t now_ms) {
     if (t->repeat_ms) {
         /*
          * Advance from the old deadline, not from now, to avoid long-term drift.
-         * Collapse missed periods into a single event after stalls/suspend.
+         * Collapse any number of missed periods in O(1): a Kindle may have
+         * slept for hours, and a millisecond timer must not loop millions of
+         * times merely to catch its deadline up.
          */
-        do {
-            t->due_ms += t->repeat_ms;
-        } while (t->due_ms <= now_ms);
+        uint64_t missed = (now_ms - t->due_ms) / t->repeat_ms + 1U;
+        if (missed > (UINT64_MAX - t->due_ms) / t->repeat_ms) {
+            t->due_ms = UINT64_MAX;
+        } else {
+            t->due_ms += missed * t->repeat_ms;
+        }
     } else {
         memset(t, 0, sizeof(*t));
     }
