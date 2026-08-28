@@ -693,6 +693,7 @@ static int setup_input(KBGame *game) {
         KBInputDev *d = &k->input[k->input_count++];
         memset(d, 0, sizeof(*d));
         d->fd = scan[i].fd;
+        (void)fcntl(d->fd, F_SETFD, FD_CLOEXEC);
         d->type = scan[i].type;
         d->slot = 0;
 
@@ -730,6 +731,7 @@ static int setup_input(KBGame *game) {
             KBInputDev *d = &k->input[k->input_count++];
             memset(d, 0, sizeof(*d));
             d->fd = rot[i].fd;
+            (void)fcntl(d->fd, F_SETFD, FD_CLOEXEC);
             d->type = rot[i].type;
             d->slot = 0;
         }
@@ -904,7 +906,6 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
 
     if (rc > 0) {
         for (int p = 0; p < n; ++p) {
-            if (!(pfds[p].revents & POLLIN)) continue;
             if (map[p] < 0) {
                 if (pfds[p].revents & POLLIN) drain_power_events(game);
                 if (pfds[p].revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -913,6 +914,7 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
                 }
                 continue;
             }
+            if (!(pfds[p].revents & POLLIN)) continue;
             KBInputDev *d = &k->input[map[p]];
             struct input_event buf[32];
             ssize_t got;
