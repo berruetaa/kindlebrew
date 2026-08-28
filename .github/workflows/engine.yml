@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: kbgame-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   host:
     runs-on: ubuntu-24.04
@@ -49,8 +53,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --filter=blob:none https://github.com/KindleModding/FBInk.git engine/vendor/FBInk
+          git clone --recurse-submodules https://github.com/KindleModding/FBInk.git engine/vendor/FBInk
           git -C engine/vendor/FBInk checkout 76557104a55ea163769464e59668e26f6af299ef
+          git -C engine/vendor/FBInk submodule update --init --recursive
 
       - name: Build minimal static FBInk
         shell: bash
