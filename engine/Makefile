@@ -10,7 +10,7 @@ KINDLE_BUILD := $(BUILD)/kindle
 COMMON_CPPFLAGS := -D_POSIX_C_SOURCE=200809L -Iinclude -Isrc
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wstrict-prototypes
 
-CORE_SRC := src/kb_core.c src/kb_canvas.c src/kb_text.c
+CORE_SRC := src/kb_core.c src/kb_canvas.c src/kb_text.c src/kb_timer.c src/kb_utils.c
 HOST_SRC := $(CORE_SRC) src/kb_backend_headless.c
 HOST_OBJ := $(patsubst src/%.c,$(HOST_BUILD)/%.o,$(HOST_SRC))
 
