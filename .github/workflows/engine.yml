@@ -7,10 +7,14 @@ on:
     paths:
       - 'engine/**'
       - 'package-src/inklab/**'
+      - 'games/ink2048/**'
+      - 'package-src/ink2048/**'
       - '.github/workflows/engine.yml'
   pull_request:
     paths:
       - 'engine/**'
+      - 'games/ink2048/**'
+      - 'package-src/ink2048/**'
       - '.github/workflows/engine.yml'
 
 permissions:
@@ -32,6 +36,7 @@ jobs:
           set -euo pipefail
           make -C engine clean test
           make -C engine all
+          make -C games/ink2048 clean test
 
   kindlehf:
     runs-on: ubuntu-24.04
@@ -71,15 +76,18 @@ jobs:
             CROSS_TC=arm-kindlehf-linux-gnueabihf \
             CC="${prefix}gcc" AR="${prefix}ar" RANLIB="${prefix}ranlib" STRIP="${prefix}strip"
 
-      - name: Cross-build engine and InkLab
+      - name: Cross-build engine and reference games
         shell: bash
         run: |
           set -euo pipefail
           make -C engine kindle FBINK_DIR=vendor/FBInk
-          file engine/build/kindle/inklab
-          arm-kindlehf-linux-gnueabihf-readelf -h engine/build/kindle/inklab | grep -E 'Class:|Machine:'
-          arm-kindlehf-linux-gnueabihf-readelf -d engine/build/kindle/inklab | grep NEEDED || true
-          ! arm-kindlehf-linux-gnueabihf-readelf -d engine/build/kindle/inklab | grep -q 'libfbink'
+          make -C games/ink2048 kindle ENGINE_DIR=../../engine FBINK_DIR=../../engine/vendor/FBInk
+          for bin in engine/build/kindle/inklab games/ink2048/build/kindle/ink2048; do
+            file "$bin"
+            arm-kindlehf-linux-gnueabihf-readelf -h "$bin" | grep -E 'Class:|Machine:'
+            arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | grep NEEDED || true
+            ! arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | grep -q 'libfbink'
+          done
 
       - name: Assemble InkLab KPM package
         if: github.event_name == 'push'
@@ -125,19 +133,64 @@ jobs:
           PY
           sha256sum packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg
 
-      - name: Publish InkLab KPM package
+      - name: Assemble Ink 2048 KPM package
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/ink2048-kpkg
+          mkdir -p build/ink2048-kpkg/payload packages/ink2048/artifacts
+          cp package-src/ink2048/manifest.json build/ink2048-kpkg/manifest.json
+          cp package-src/ink2048/install.sh build/ink2048-kpkg/install.sh
+          cp package-src/ink2048/launch.sh build/ink2048-kpkg/launch.sh
+          cp package-src/ink2048/uninstall.sh build/ink2048-kpkg/uninstall.sh
+          cp games/ink2048/build/kindle/ink2048 build/ink2048-kpkg/payload/ink2048
+          chmod 755 build/ink2048-kpkg/install.sh build/ink2048-kpkg/launch.sh build/ink2048-kpkg/uninstall.sh build/ink2048-kpkg/payload/ink2048
+
+          python - <<'PY'
+          import os
+          import tarfile
+
+          src = 'build/ink2048-kpkg'
+          out = 'packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg'
+          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
+              for name in sorted(os.listdir(src)):
+                  archive.add(os.path.join(src, name), arcname=name)
+          print('packed', out)
+          PY
+
+          python - <<'PY'
+          import json
+          import tarfile
+
+          p='packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg'
+          with tarfile.open(p, 'r:gz') as t:
+              names=set(t.getnames())
+              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','payload/ink2048'):
+                  assert required in names, (required, names)
+              m=json.load(t.extractfile('manifest.json'))
+          assert m['manifest_version'] == 2
+          assert m['id'] == 'ink2048'
+          assert m['version'] == [1,0,0]
+          assert m['supported_platforms'] == ['kindlehf']
+          print('validated', p)
+          PY
+          sha256sum packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
+
+      - name: Publish generated KPM packages
         if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg
+          git add packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg \
+                  packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
           if git diff --cached --quiet; then
-            echo 'InkLab package unchanged.'
+            echo 'Generated packages unchanged.'
             exit 0
           fi
-          git commit -m 'build: package Kindlebrew InkLab 0.1.0'
+          git commit -m 'build: package KBGE reference titles'
           branch="${GITHUB_REF_NAME}"
           for attempt in 1 2 3; do
             if git pull --rebase origin "$branch" && git push origin "HEAD:$branch"; then
@@ -146,11 +199,13 @@ jobs:
             git rebase --abort 2>/dev/null || true
             sleep $((attempt * 2))
           done
-          echo 'Failed to publish InkLab package after 3 attempts.' >&2
+          echo 'Failed to publish generated packages after 3 attempts.' >&2
           exit 1
 
-      - name: Upload Kindle smoke-test binary
+      - name: Upload Kindle reference binaries
         uses: actions/upload-artifact@v4
         with:
-          name: kbgame-inklab-kindlehf
-          path: engine/build/kindle/inklab
+          name: kbge-kindlehf-reference-binaries
+          path: |
+            engine/build/kindle/inklab
+            games/ink2048/build/kindle/ink2048
