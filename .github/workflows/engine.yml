@@ -6,6 +6,7 @@ on:
       - feat/kindle-game-engine
     paths:
       - 'engine/**'
+      - 'package-src/inklab/**'
       - '.github/workflows/engine.yml'
   pull_request:
     paths:
@@ -13,7 +14,7 @@ on:
       - '.github/workflows/engine.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: kbgame-${{ github.ref }}
@@ -37,6 +38,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install KindleModding kindlehf toolchain
         shell: bash
@@ -77,6 +80,74 @@ jobs:
           arm-kindlehf-linux-gnueabihf-readelf -h engine/build/kindle/inklab | grep -E 'Class:|Machine:'
           arm-kindlehf-linux-gnueabihf-readelf -d engine/build/kindle/inklab | grep NEEDED || true
           ! arm-kindlehf-linux-gnueabihf-readelf -d engine/build/kindle/inklab | grep -q 'libfbink'
+
+      - name: Assemble InkLab KPM package
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/inklab-kpkg
+          mkdir -p build/inklab-kpkg/payload packages/inklab/artifacts
+          cp package-src/inklab/manifest.json build/inklab-kpkg/manifest.json
+          cp package-src/inklab/install.sh build/inklab-kpkg/install.sh
+          cp package-src/inklab/launch.sh build/inklab-kpkg/launch.sh
+          cp package-src/inklab/uninstall.sh build/inklab-kpkg/uninstall.sh
+          cp engine/build/kindle/inklab build/inklab-kpkg/payload/inklab
+          chmod 755 build/inklab-kpkg/install.sh build/inklab-kpkg/launch.sh build/inklab-kpkg/uninstall.sh build/inklab-kpkg/payload/inklab
+
+          python - <<'PY'
+          import os
+          import tarfile
+
+          src = 'build/inklab-kpkg'
+          out = 'packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg'
+          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
+              for name in sorted(os.listdir(src)):
+                  archive.add(os.path.join(src, name), arcname=name)
+          print('packed', out)
+          PY
+
+          python - <<'PY'
+          import json
+          import tarfile
+
+          p='packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg'
+          with tarfile.open(p, 'r:gz') as t:
+              names=set(t.getnames())
+              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','payload/inklab'):
+                  assert required in names, (required, names)
+              m=json.load(t.extractfile('manifest.json'))
+          assert m['manifest_version'] == 2
+          assert m['id'] == 'inklab'
+          assert m['version'] == [0,1,0]
+          assert m['supported_platforms'] == ['kindlehf']
+          print('validated', p)
+          PY
+          sha256sum packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg
+
+      - name: Publish InkLab KPM package
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg
+          if git diff --cached --quiet; then
+            echo 'InkLab package unchanged.'
+            exit 0
+          fi
+          git commit -m 'build: package Kindlebrew InkLab 0.1.0'
+          branch="${GITHUB_REF_NAME}"
+          for attempt in 1 2 3; do
+            if git pull --rebase origin "$branch" && git push origin "HEAD:$branch"; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((attempt * 2))
+          done
+          echo 'Failed to publish InkLab package after 3 attempts.' >&2
+          exit 1
 
       - name: Upload Kindle smoke-test binary
         uses: actions/upload-artifact@v4
