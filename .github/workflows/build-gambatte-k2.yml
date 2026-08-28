@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'package-src/gambatte-k2/**'
+      - 'tools/kpm-pack.sh'
       - '.github/workflows/build-gambatte-k2.yml'
   workflow_dispatch:
 
@@ -24,6 +25,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install package validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
 
       - name: Download and verify upstream release
         shell: bash
@@ -64,17 +70,9 @@ jobs:
           curl -fL --retry 3 \
             -o build/pkg/LICENSE.upstream \
             https://raw.githubusercontent.com/crazy-electron/gambatte-k2/1.0/LICENSE
-          python - <<'PY'
-          import os
-          import tarfile
-
-          src = 'build/pkg'
-          out = 'packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg'
-          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
-              for name in sorted(os.listdir(src)):
-                  archive.add(os.path.join(src, name), arcname=name)
-          print('packed', out)
-          PY
+          bash tools/kpm-pack.sh \
+            build/pkg \
+            packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg
 
       - name: Validate package and repository manifest
         shell: bash
