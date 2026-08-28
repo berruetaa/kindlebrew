@@ -7,10 +7,6 @@ TMP="/mnt/us/.kindlebrew-gnomegames"
 TARGET="/mnt/us/extensions/gnomegames"
 DOC="/mnt/us/documents/GnomeMines.sh"
 
-if [ "${KPM_PLATFORM:-}" != "kindlehf" ]; then
-  echo "GNOME Mines package supports kindlehf only (got: ${KPM_PLATFORM:-unknown})."
-  exit 1
-fi
 
 if [ -e "$TARGET" ] && [ ! -f "$TARGET/.kindlebrew-managed" ]; then
   echo "Existing GnomeGames installation is not managed by Kindlebrew; refusing to overwrite it."
