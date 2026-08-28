@@ -33,11 +33,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install libarchive validator
+      - name: Build KPM-matched libarchive 3.8.1 validator
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y build-essential zlib1g-dev liblzma-dev
+          curl -fL --retry 3 \
+            -o /tmp/libarchive-3.8.1.tar.xz \
+            https://github.com/libarchive/libarchive/releases/download/v3.8.1/libarchive-3.8.1.tar.xz
+          echo '19f917d42d530f98815ac824d90c7eaf648e9d9a50e4f309c812457ffa5496b5  /tmp/libarchive-3.8.1.tar.xz' | sha256sum -c -
+          rm -rf /tmp/libarchive-3.8.1
+          tar -xJf /tmp/libarchive-3.8.1.tar.xz -C /tmp
+          cd /tmp/libarchive-3.8.1
+          ./configure --disable-shared --enable-static >/dev/null
+          make -j2 bsdtar >/dev/null
+          ./bsdtar --version
+          echo "BSDTAR=/tmp/libarchive-3.8.1/bsdtar" >> "$GITHUB_ENV"
 
       - name: Reject ad-hoc KPM writers
         run: |
