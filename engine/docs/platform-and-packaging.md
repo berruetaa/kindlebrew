@@ -33,20 +33,14 @@ A native game package should:
 
 ## Scriptlet metadata
 
-sh_integration reads metadata from the first few header lines:
+sh_integration v4.1.0 reads metadata from the first six physical lines. Kindlebrew generates these Scriptlets from `library.json`; game packages should not hand-roll them.
+
+A game may optionally declare one raster cover (`cover.png`, `cover.jpg` or `cover.jpeg`). The installer copies artwork into the game's stable extension directory before updating the Scriptlet, and the Scriptlet references that absolute path with `# Icon:`.
+
+The launcher delegates to KPM with an absolute executable path, so it does not depend on the Scriptlet process PATH:
 
 ~~~sh
-#!/bin/sh
-# Name: Game Name
-# Author: Author / Kindlebrew
-# Icon: data:image/png;base64,...
-# DontUseFBInk
-~~~
-
-Embedding a small cover avoids path races during indexing. The Scriptlet should usually delegate to KPM:
-
-~~~sh
-/var/local/kmc/bin/kpm launch package-id
+exec /var/local/kmc/bin/kpm launch package-id "$@"
 ~~~
 
 ## No rootfs writes
