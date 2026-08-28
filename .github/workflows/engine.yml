@@ -53,10 +53,10 @@ jobs:
             --author 'Kindlebrew' \
             --package-id cover-fixture \
             --install-dir /mnt/us/extensions/kindlebrew-cover-fixture \
-            --cover-filename cover.svg \
+            --cover-filename cover.png \
             --output "$tmp"
           test "$(wc -l < "$tmp")" -le 6
-          head -n 6 "$tmp" | grep -F '# Icon: /mnt/us/extensions/kindlebrew-cover-fixture/cover.svg'
+          head -n 6 "$tmp" | grep -F '# Icon: /mnt/us/extensions/kindlebrew-cover-fixture/cover.png'
           head -n 6 "$tmp" | grep -F '# DontUseFBInk'
 
       - name: Run AddressSanitizer and UndefinedBehaviorSanitizer
