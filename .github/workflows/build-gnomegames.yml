@@ -7,6 +7,7 @@ on:
     paths:
       - 'package-src/chess/**'
       - 'package-src/mines/**'
+      - 'tools/kpm-pack.sh'
       - '.github/workflows/build-gnomegames.yml'
 
 permissions:
@@ -55,7 +56,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabihf
+          sudo apt-get install -y gcc-arm-linux-gnueabihf libarchive-tools
 
       - name: Assemble KPM wrappers
         shell: bash
@@ -78,18 +79,12 @@ jobs:
             fi
           done
 
-          python - <<'PY'
-          import os
-          import tarfile
-
-          for pkg in ("chess", "mines"):
-              src = f"build/{pkg}"
-              out = f"packages/{pkg}/artifacts/{pkg}_1.1.0_kindlehf.kpkg"
-              with tarfile.open(out, "w:gz", compresslevel=5) as archive:
-                  for name in sorted(os.listdir(src)):
-                      archive.add(os.path.join(src, name), arcname=name)
-              print("packed", out)
-          PY
+          bash tools/kpm-pack.sh \
+            build/chess \
+            packages/chess/artifacts/chess_1.1.0_kindlehf.kpkg
+          bash tools/kpm-pack.sh \
+            build/mines \
+            packages/mines/artifacts/mines_1.1.0_kindlehf.kpkg
 
       - name: Validate packages
         shell: bash
