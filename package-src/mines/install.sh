@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-URL="https://github.com/crazy-electron/GnomeGames4Kindle/releases/download/v1.1/gnomegames.zip"
+URL="https://ve.uy/repo/upstream/gnomegames-1.1.zip"
 SHA256="3ac019bcca2634d0cc68ca141462eaa26cf357ee1247c0099fea939f74969448"
 TMP="/mnt/us/.kindlebrew-gnomegames"
 TARGET="/mnt/us/extensions/gnomegames"
