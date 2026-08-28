@@ -207,7 +207,20 @@ static void update_device_from_state(KBGame *game) {
 static void refresh_fb_pointer(KBGame *game) {
     KBKindle *k = (KBKindle *)game->backend;
     k->fb = fbink_get_fb_pointer(k->fbfd, &k->fb_size);
+
+    size_t stride = (size_t)k->fb_state.scanline_stride;
+    size_t width = (size_t)k->fb_state.screen_width;
+    size_t height = (size_t)k->fb_state.screen_height;
+    bool mapping_covers_screen = false;
+    if (height > 0 && stride >= width) {
+        size_t last_row = (height - 1U) * stride;
+        mapping_covers_screen =
+            last_row <= SIZE_MAX - width &&
+            last_row + width <= k->fb_size;
+    }
+
     k->direct_y8 = k->fb &&
+                   mapping_covers_screen &&
                    k->fb_state.pixel_format == FBINK_PXFMT_Y8 &&
                    k->fb_state.bpp == 8 &&
                    !k->fb_state.inverted_grayscale &&
