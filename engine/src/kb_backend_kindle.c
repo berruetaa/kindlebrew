@@ -598,6 +598,7 @@ static int kindle_init(KBGame *game) {
     game->device.has_eclipse_waveform = k->fb_state.has_eclipse_wfm;
     game->device.has_color_panel = k->fb_state.has_color_panel;
     game->device.can_wait_for_submission = k->fb_state.can_wait_for_submission;
+    strncpy(game->device.fbink_version, fbink_version(), sizeof(game->device.fbink_version)-1);
 
     k->fb = fbink_get_fb_pointer(k->fbfd, &k->fb_size);
     k->direct_y8 = k->fb &&
@@ -608,6 +609,7 @@ static int kindle_init(KBGame *game) {
                    k->fb_state.view_height == k->fb_state.screen_height &&
                    k->fb_state.view_hori_origin == 0 &&
                    k->fb_state.view_vert_origin == 0;
+    game->device.direct_framebuffer_y8 = k->direct_y8;
 
     if (game->config.keep_awake) {
         if (run_quiet("lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1") == 0)
@@ -615,6 +617,13 @@ static int kindle_init(KBGame *game) {
     }
 
     if (setup_input(game) != 0) return -1;
+    game->device.input_devices = k->input_count;
+    for (int i = 0; i < k->input_count; ++i) {
+        if (k->input[i].grabbed) {
+            game->device.touch_grab_active = true;
+            break;
+        }
+    }
 
     signal(SIGINT, kb_signal_handler);
     signal(SIGTERM, kb_signal_handler);
