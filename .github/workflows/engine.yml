@@ -10,6 +10,7 @@ on:
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
+      - 'tools/kpm-pack.sh'
       - '.github/workflows/engine.yml'
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
+      - 'tools/kpm-pack.sh'
       - '.github/workflows/engine.yml'
 
 permissions:
@@ -57,6 +59,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install package validation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
 
       - name: Install KindleModding kindlehf toolchain
         shell: bash
@@ -117,17 +126,7 @@ jobs:
           cp engine/build/kindle/inklab build/inklab-kpkg/payload/inklab
           chmod 755 build/inklab-kpkg/install.sh build/inklab-kpkg/launch.sh build/inklab-kpkg/uninstall.sh build/inklab-kpkg/payload/inklab
 
-          python - <<'PY'
-          import os
-          import tarfile
-
-          src = 'build/inklab-kpkg'
-          out = 'packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg'
-          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
-              for name in sorted(os.listdir(src)):
-                  archive.add(os.path.join(src, name), arcname=name)
-          print('packed', out)
-          PY
+          bash tools/kpm-pack.sh             build/inklab-kpkg             packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg
 
           python - <<'PY'
           import json
@@ -163,17 +162,7 @@ jobs:
           cp games/ink2048/build/kindle/ink2048 build/ink2048-kpkg/payload/ink2048
           chmod 755 build/ink2048-kpkg/install.sh build/ink2048-kpkg/launch.sh build/ink2048-kpkg/uninstall.sh build/ink2048-kpkg/payload/ink2048
 
-          python - <<'PY'
-          import os
-          import tarfile
-
-          src = 'build/ink2048-kpkg'
-          out = 'packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg'
-          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
-              for name in sorted(os.listdir(src)):
-                  archive.add(os.path.join(src, name), arcname=name)
-          print('packed', out)
-          PY
+          bash tools/kpm-pack.sh             build/ink2048-kpkg             packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
 
           python - <<'PY'
           import json
