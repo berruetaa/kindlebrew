@@ -42,6 +42,8 @@ def main() -> None:
 
         source_manifest_path = ROOT / "package-src" / package_id / "manifest.json"
         source_manifest = load_json(source_manifest_path) if source_manifest_path.is_file() else None
+        current_inner: dict | None = None
+        current_version: tuple[int, int, int] | None = None
 
         for artifact in artifacts:
             if not isinstance(artifact, dict):
@@ -90,15 +92,28 @@ def main() -> None:
             if inner.get("dependencies", []) != artifact.get("dependencies", []):
                 die(f"{artifact_path.relative_to(ROOT)}: dependency list mismatch")
 
-            if source_manifest is not None:
-                for key in ("id", "version", "supported_platforms", "dependencies"):
-                    source_value = source_manifest.get(key, [] if key == "dependencies" else None)
-                    inner_value = inner.get(key, [] if key == "dependencies" else None)
-                    if source_value != inner_value:
-                        die(
-                            f"{package_id}: package-src manifest {key}={source_value!r} "
-                            f"does not match artifact {inner_value!r}"
-                        )
+            version = inner.get("version")
+            if (
+                isinstance(version, list)
+                and len(version) == 3
+                and all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in version)
+            ):
+                version_key = tuple(version)
+                if current_version is None or version_key > current_version:
+                    current_version = version_key
+                    current_inner = inner
+
+        if source_manifest is not None:
+            if current_inner is None:
+                die(f"{package_id}: no valid current artifact version")
+            for key in ("id", "version", "supported_platforms", "dependencies"):
+                source_value = source_manifest.get(key, [] if key == "dependencies" else None)
+                inner_value = current_inner.get(key, [] if key == "dependencies" else None)
+                if source_value != inner_value:
+                    die(
+                        f"{package_id}: package-src manifest {key}={source_value!r} "
+                        f"does not match highest artifact {inner_value!r}"
+                    )
 
     committed = {
         p.resolve()
