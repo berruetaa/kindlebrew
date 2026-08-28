@@ -344,6 +344,7 @@ static int setup_power_events(KBGame *game) {
     (void)fcntl(p[0], F_SETFD, FD_CLOEXEC);
     k->power_fd = p[0];
     k->power_pid = pid;
+    k->power_len = 0;
     return 0;
 }
 
