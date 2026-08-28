@@ -26,6 +26,12 @@ if [ ! -f "$src/manifest.json" ]; then
 fi
 
 mkdir -p "$(dirname "$out")"
+
+previous=''
+if [ -f "$out" ]; then
+    previous="$(mktemp)"
+    cp "$out" "$previous"
+fi
 rm -f "$out"
 
 helper="${RUNNER_TEMP:-/tmp}/kindlebrew-kpm-helper-${KPM_HELPER_COMMIT}.py"
@@ -98,4 +104,54 @@ rm -rf "$extract_dir"
 trap - EXIT INT TERM
 
 echo "libarchive list+extract OK: $out"
+
+if [ -n "$previous" ]; then
+    if python - "$previous" "$out" <<'PY'
+import hashlib
+import sys
+import tarfile
+
+def fingerprint(path):
+    result = []
+    with tarfile.open(path, "r:*") as archive:
+        for member in archive.getmembers():
+            if member.isfile():
+                f = archive.extractfile(member)
+                digest = hashlib.sha256(f.read()).hexdigest()
+                kind = "file"
+                target = ""
+            elif member.isdir():
+                digest = ""
+                kind = "dir"
+                target = ""
+            elif member.issym():
+                digest = ""
+                kind = "symlink"
+                target = member.linkname
+            elif member.islnk():
+                digest = ""
+                kind = "hardlink"
+                target = member.linkname
+            else:
+                digest = ""
+                kind = f"type:{member.type!r}"
+                target = member.linkname or ""
+            result.append((member.name, kind, member.mode & 0o7777, target, digest))
+    return sorted(result)
+
+old, new = sys.argv[1:3]
+if fingerprint(old) != fingerprint(new):
+    raise SystemExit(1)
+print("semantic package content unchanged")
+PY
+    then
+        mv "$previous" "$out"
+        previous=''
+        echo "preserved existing artifact bytes to avoid timestamp-only churn"
+    fi
+fi
+if [ -n "$previous" ]; then
+    rm -f "$previous"
+fi
+
 sha256sum "$out"
