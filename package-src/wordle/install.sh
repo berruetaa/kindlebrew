@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-URL="https://github.com/crizmo/KWordle/releases/download/v1.5.0/kwordle.zip"
+URL="https://ve.uy/repo/upstream/kwordle-1.5.0.zip"
 SHA256="1755b33c5d0724bacb025ffd44256c7116463e985e82cc45a5f8025c29ad563f"
 TMP="/mnt/us/.kindlebrew-wordle"
 DOCS="/mnt/us/documents"
