@@ -11,11 +11,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
@@ -115,8 +117,16 @@ static void update_device_from_state(KBGame *game) {
 
 static void refresh_fb_pointer(KBGame *game) {
     KBKindle *k = (KBKindle *)game->backend;
-    refresh_fb_pointer(game);
-    update_device_from_state(game);
+    k->fb = fbink_get_fb_pointer(k->fbfd, &k->fb_size);
+    k->direct_y8 = k->fb &&
+                   k->fb_state.pixel_format == FBINK_PXFMT_Y8 &&
+                   k->fb_state.bpp == 8 &&
+                   !k->fb_state.inverted_grayscale &&
+                   k->fb_state.view_width == k->fb_state.screen_width &&
+                   k->fb_state.view_height == k->fb_state.screen_height &&
+                   k->fb_state.view_hori_origin == 0 &&
+                   k->fb_state.view_vert_origin == 0;
+    game->device.direct_framebuffer_y8 = k->direct_y8;
 }
 
 static int resize_canvas_for_state(KBGame *game, const FBInkState *state) {
@@ -239,6 +249,13 @@ static int setup_power_events(KBGame *game) {
     return 0;
 }
 
+static void sleep_ms(unsigned ms) {
+    struct timespec ts;
+    ts.tv_sec = (time_t)(ms / 1000U);
+    ts.tv_nsec = (long)(ms % 1000U) * 1000000L;
+    while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {}
+}
+
 static void teardown_power_events(KBKindle *k) {
     if (k->power_fd >= 0) {
         close(k->power_fd);
@@ -252,7 +269,7 @@ static void teardown_power_events(KBKindle *k) {
                 k->power_pid = 0;
                 return;
             }
-            usleep(10000);
+            sleep_ms(10);
         }
         kill(k->power_pid, SIGTERM);
         (void)waitpid(k->power_pid, NULL, 0);
