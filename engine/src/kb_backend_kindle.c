@@ -58,6 +58,7 @@ typedef struct {
     size_t fb_size;
     bool direct_y8;
     bool keep_awake_set;
+    bool mtk_fast_mode_set;
 
     int power_fd;
     pid_t power_pid;
@@ -141,6 +142,19 @@ static int request_native_repaint(void) {
     return run_quiet_argv("/usr/bin/xrefresh", argv);
 }
 
+static void apply_low_latency_mode(KBGame *game) {
+    KBKindle *k = (KBKindle *)game->backend;
+    if (!k || !game->config.low_latency_mode || !k->fb_state.is_mtk || k->fbfd < 0) return;
+
+    int rc = fbink_mtk_toggle_auto_reagl(k->fbfd, false);
+    if (rc == 0) {
+        k->mtk_fast_mode_set = true;
+        game->device.mtk_fast_mode_active = true;
+    } else if (rc != -ENOSYS) {
+        fprintf(stderr, "kbgame: warning: failed to enable MTK low-latency mode: %d\n", rc);
+    }
+}
+
 static void update_device_from_state(KBGame *game) {
     KBKindle *k = (KBKindle *)game->backend;
     game->device.width = game->canvas.width;
@@ -220,6 +234,7 @@ static int revalidate_framebuffer(KBGame *game) {
     k->fb_state = state;
     refresh_fb_pointer(game);
     update_device_from_state(game);
+    apply_low_latency_mode(game);
 
     kb_damage_reset(game);
     kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
@@ -1027,6 +1042,7 @@ static int kindle_init(KBGame *game) {
     strncpy(game->device.fbink_version, fbink_version(), sizeof(game->device.fbink_version)-1);
 
     refresh_fb_pointer(game);
+    apply_low_latency_mode(game);
 
     if (game->config.keep_awake) {
         if (set_prevent_screensaver(true) == 0) k->keep_awake_set = true;
@@ -1060,6 +1076,11 @@ static void kindle_shutdown(KBGame *game) {
         (void)set_prevent_screensaver(false);
 
     if (k->fbfd >= 0) {
+        if (k->mtk_fast_mode_set) {
+            (void)fbink_mtk_toggle_auto_reagl(k->fbfd, true);
+            k->mtk_fast_mode_set = false;
+            game->device.mtk_fast_mode_active = false;
+        }
         fbink_close(k->fbfd);
         k->fbfd = -1;
     }
