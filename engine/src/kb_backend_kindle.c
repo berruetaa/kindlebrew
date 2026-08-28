@@ -700,10 +700,25 @@ static void process_input_event(KBGame *game, KBInputDev *dev, const struct inpu
     }
 
     if (ie->type == EV_KEY) {
-        if (ie->code == BTN_TOUCH && !dev->has_mt) {
-            KBTouchSlot *p = &dev->slots[0];
-            p->active = ie->value != 0;
-            p->changed = true;
+        if (ie->code == BTN_TOUCH &&
+            (dev->type & (INPUT_TOUCHSCREEN | INPUT_SCALED_TABLET | INPUT_TABLET))) {
+            if (ie->value == 0) {
+                /*
+                 * Some Kindle touch protocols omit MT_TRACKING_ID=-1 on lift.
+                 * BTN_TOUCH=0 is authoritative that contact ended; closing all
+                 * active slots is also harmless on normal protocol-B devices.
+                 */
+                for (int i = 0; i < KB_MAX_TOUCH_SLOTS; ++i) {
+                    if (dev->slots[i].active || dev->slots[i].prev_active) {
+                        dev->slots[i].active = false;
+                        dev->slots[i].changed = true;
+                    }
+                }
+            } else if (!dev->has_mt) {
+                KBTouchSlot *p = &dev->slots[0];
+                p->active = true;
+                p->changed = true;
+            }
             return;
         }
 
