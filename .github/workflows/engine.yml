@@ -11,6 +11,7 @@ on:
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/render-game-scriptlet.py'
       - '.github/workflows/engine.yml'
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/render-game-scriptlet.py'
       - '.github/workflows/engine.yml'
 
 permissions:
@@ -41,6 +43,21 @@ jobs:
           make -C engine clean test CFLAGS='-O2 -Werror'
           make -C engine all CFLAGS='-O2 -Werror'
           make -C games/ink2048 clean test CFLAGS='-O2 -Werror'
+
+      - name: Validate sh_integration game cover headers
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          python tools/render-game-scriptlet.py \
+            --name 'Cover Fixture' \
+            --author 'Kindlebrew' \
+            --package-id cover-fixture \
+            --install-dir /mnt/us/extensions/kindlebrew-cover-fixture \
+            --cover-filename cover.svg \
+            --output "$tmp"
+          test "$(wc -l < "$tmp")" -le 6
+          head -n 6 "$tmp" | grep -F '# Icon: /mnt/us/extensions/kindlebrew-cover-fixture/cover.svg'
+          head -n 6 "$tmp" | grep -F '# DontUseFBInk'
 
       - name: Run AddressSanitizer and UndefinedBehaviorSanitizer
         env:
@@ -164,6 +181,35 @@ jobs:
           cp games/ink2048/build/kindle/ink2048 build/ink2048-kpkg/payload/ink2048
           chmod 755 build/ink2048-kpkg/install.sh build/ink2048-kpkg/launch.sh build/ink2048-kpkg/uninstall.sh build/ink2048-kpkg/payload/ink2048
 
+          cover_name=''
+          for cover in \
+            package-src/ink2048/cover.svg \
+            package-src/ink2048/cover.png \
+            package-src/ink2048/cover.jpg \
+            package-src/ink2048/cover.jpeg; do
+            if [ -f "$cover" ]; then
+              if [ -n "$cover_name" ]; then
+                echo 'Ink 2048 defines more than one custom cover.' >&2
+                exit 1
+              fi
+              cover_name="$(basename "$cover")"
+              cp "$cover" "build/ink2048-kpkg/$cover_name"
+            fi
+          done
+
+          scriptlet_args=(
+            --name 'Ink 2048'
+            --author 'Kindlebrew'
+            --package-id ink2048
+            --install-dir /mnt/us/extensions/kindlebrew-ink2048
+            --output build/ink2048-kpkg/scriptlet.sh
+          )
+          if [ -n "$cover_name" ]; then
+            scriptlet_args+=(--cover-filename "$cover_name")
+          fi
+          python tools/render-game-scriptlet.py "${scriptlet_args[@]}"
+          chmod 755 build/ink2048-kpkg/scriptlet.sh
+
           bash tools/kpm-pack.sh \
             build/ink2048-kpkg \
             packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
@@ -175,7 +221,7 @@ jobs:
           p='packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg'
           with tarfile.open(p, 'r:gz') as t:
               names=set(t.getnames())
-              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','LICENSE','SOURCE.txt','payload/ink2048'):
+              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','LICENSE','SOURCE.txt','scriptlet.sh','payload/ink2048'):
                   assert required in names, (required, names)
               m=json.load(t.extractfile('manifest.json'))
           assert m['manifest_version'] == 2
