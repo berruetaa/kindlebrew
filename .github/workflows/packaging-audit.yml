@@ -1,0 +1,95 @@
+name: KPM packaging audit
+
+on:
+  push:
+    branches:
+      - main
+      - feat/kindle-game-engine
+    paths:
+      - 'manifest.json'
+      - 'package-src/**'
+      - 'packages/**'
+      - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
+      - 'tools/audit-repository.py'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'manifest.json'
+      - 'package-src/**'
+      - 'packages/**'
+      - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
+      - 'tools/audit-repository.py'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install libarchive validator
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Reject ad-hoc KPM writers
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+          import re
+
+          root = pathlib.Path('.github/workflows')
+          offenders = []
+          pack_workflows = []
+
+          for path in sorted(root.glob('*.y*ml')):
+              text = path.read_text(encoding='utf-8')
+
+              # Reading archives for validation is fine. Writing .kpkg files
+              # anywhere except tools/kpm-pack.sh is not.
+              bad_patterns = [
+                  r'\btar\s+-[^\n]*[cz][^\n]*\.kpkg',
+                  r'\btar\s+--format=[^\n]*\.kpkg',
+                  r'tarfile\.open\([^\n]*["\'][^"\']*w[^"\']*["\']',
+              ]
+              for pattern in bad_patterns:
+                  if re.search(pattern, text):
+                      offenders.append(f'{path}: {pattern}')
+
+              if '.kpkg' in text and ('Assemble KPM' in text or 'KPM package' in text):
+                  pack_workflows.append(path)
+                  if 'tools/kpm-pack.sh' not in text:
+                      offenders.append(f'{path}: KPM build does not call tools/kpm-pack.sh')
+
+          if offenders:
+              raise SystemExit(
+                  'ad-hoc KPM package writers are forbidden:\n  - '
+                  + '\n  - '.join(offenders)
+              )
+
+          print('KPM workflow writer audit OK:', ', '.join(map(str, pack_workflows)))
+          PY
+
+      - name: Audit repository graph
+        run: |
+          set -euo pipefail
+          python tools/audit-repository.py
+
+      - name: Validate every committed KPM artifact
+        run: |
+          set -euo pipefail
+          found=0
+          while IFS= read -r pkg; do
+            found=1
+            echo "==> $pkg"
+            bash tools/kpm-validate.sh "$pkg"
+          done < <(find packages -type f -path '*/artifacts/*.kpkg' -print | sort)
+          test "$found" -eq 1
