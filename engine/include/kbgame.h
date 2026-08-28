@@ -116,6 +116,7 @@ typedef struct {
 } KBStats;
 
 /* Runtime */
+void kb_config_defaults(KBConfig *config);
 KBGame *kb_create(const KBConfig *config);
 void kb_destroy(KBGame *game);
 const char *kb_last_error(const KBGame *game);
