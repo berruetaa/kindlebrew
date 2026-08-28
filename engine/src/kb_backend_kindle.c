@@ -470,7 +470,7 @@ static void drain_power_events(KBGame *game) {
     }
 }
 
-static int absinfo_for(int fd, unsigned int primary, unsigned int fallback,
+static int absinfo_for(int fd, int primary, int fallback,
                        struct input_absinfo *out) {
     if (ioctl(fd, EVIOCGABS(primary), out) == 0 && out->maximum > out->minimum) return primary;
     memset(out, 0, sizeof(*out));
