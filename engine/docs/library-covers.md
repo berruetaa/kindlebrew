@@ -12,12 +12,12 @@ package-src/my-game/
 ├── install.sh
 ├── launch.sh
 ├── uninstall.sh
-└── cover.svg       # optional
+└── cover.png       # optional
 ~~~
 
 Supported Kindlebrew cover names are:
 
-- `cover.svg`
+- `cover.png`
 - `cover.png`
 - `cover.jpg`
 - `cover.jpeg`
@@ -27,7 +27,7 @@ Use at most one.
 During package assembly the cover is copied into the `.kpkg`. During installation it is copied into the game's persistent extension directory, for example:
 
 ~~~text
-/mnt/us/extensions/kindlebrew-my-game/cover.svg
+/mnt/us/extensions/kindlebrew-my-game/cover.png
 ~~~
 
 The library Scriptlet then references that absolute path:
@@ -36,7 +36,7 @@ The library Scriptlet then references that absolute path:
 #!/bin/sh
 # Name: My Game
 # Author: Me
-# Icon: /mnt/us/extensions/kindlebrew-my-game/cover.svg
+# Icon: /mnt/us/extensions/kindlebrew-my-game/cover.png
 # DontUseFBInk
 exec /var/local/kmc/bin/kpm launch my-game "$@"
 ~~~
@@ -57,7 +57,7 @@ python tools/render-game-scriptlet.py \
   --author 'Me' \
   --package-id my-game \
   --install-dir /mnt/us/extensions/kindlebrew-my-game \
-  --cover-filename cover.svg \
+  --cover-filename cover.png \
   --output build/my-game/scriptlet.sh
 ~~~
 
@@ -75,4 +75,4 @@ Do not write directly to `cc.db`. That duplicates sh_integration behavior and co
 
 ## Cover design recommendations
 
-Treat the asset as an e-ink thumbnail first: strong silhouette, high local contrast, minimal fine texture, and a design that survives grayscale. SVG is a good source format when the target firmware renders it correctly; PNG/JPEG are available as conservative fallbacks.
+Treat the asset as an e-ink thumbnail first: strong silhouette, high local contrast, minimal fine texture, and a design that survives grayscale. Use PNG or JPEG for the packaged asset. SVG may be useful as a design-time source, but Kindlebrew does not claim stock-library SVG thumbnail compatibility without device evidence.
