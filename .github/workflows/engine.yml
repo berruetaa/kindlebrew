@@ -31,12 +31,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build and test core
+      - name: Build and test core with warnings as errors
         run: |
           set -euo pipefail
-          make -C engine clean test
-          make -C engine all
-          make -C games/ink2048 clean test
+          make -C engine clean test CFLAGS='-O2 -Werror'
+          make -C engine all CFLAGS='-O2 -Werror'
+          make -C games/ink2048 clean test CFLAGS='-O2 -Werror'
+
+      - name: Run AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          san='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
+          make -C engine clean test CFLAGS="$san"
+          make -C games/ink2048 clean test CFLAGS="$san"
 
   kindlehf:
     runs-on: ubuntu-24.04
