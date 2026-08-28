@@ -139,6 +139,34 @@ static int write_all(int fd, const unsigned char *data, size_t size) {
     return 0;
 }
 
+static void fsync_parent_best_effort(const char *path) {
+    if (!path) return;
+    char dir[512];
+    size_t n = strlen(path);
+    if (n == 0 || n >= sizeof(dir)) return;
+    memcpy(dir, path, n + 1U);
+
+    char *slash = strrchr(dir, '/');
+    if (!slash) {
+        strcpy(dir, ".");
+    } else if (slash == dir) {
+        slash[1] = '\0';
+    } else {
+        *slash = '\0';
+    }
+
+    int dfd = open(dir, O_RDONLY | O_CLOEXEC);
+    if (dfd >= 0) {
+        /*
+         * Some FAT-backed Kindle userstores reject directory fsync with
+         * EINVAL. The file itself was already fsync'ed; this is an extra
+         * durability fence where the filesystem supports it.
+         */
+        (void)fsync(dfd);
+        close(dfd);
+    }
+}
+
 int kb_save_atomic(const char *path, const void *data, size_t size) {
     if (!path || !*path || (!data && size)) return -1;
 
@@ -155,7 +183,11 @@ int kb_save_atomic(const char *path, const void *data, size_t size) {
     if (close(fd) != 0) rc = -1;
 
     if (rc == 0) {
-        if (rename(tmp, path) != 0) rc = -1;
+        if (rename(tmp, path) != 0) {
+            rc = -1;
+        } else {
+            fsync_parent_best_effort(path);
+        }
     }
     if (rc != 0) unlink(tmp);
     return rc;
