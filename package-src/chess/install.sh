@@ -6,6 +6,9 @@ SHA256="3ac019bcca2634d0cc68ca141462eaa26cf357ee1247c0099fea939f74969448"
 TMP="/mnt/us/.kindlebrew-gnomegames"
 TARGET="/mnt/us/extensions/gnomegames"
 DOC="/mnt/us/documents/GnomeChess.sh"
+NEW="${TARGET}.kpm-new.$"
+OLD="${TARGET}.kpm-old.$"
+DOC_NEW="${DOC}.kpm-new.$"
 
 
 if [ -e "$TARGET" ] && [ ! -f "$TARGET/.kindlebrew-managed" ]; then
@@ -17,7 +20,8 @@ command -v curl >/dev/null 2>&1 || { echo "curl is required."; exit 1; }
 command -v unzip >/dev/null 2>&1 || { echo "unzip is required."; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required."; exit 1; }
 
-rm -rf "$TMP"
+rm -rf "$TMP" "$NEW" "$OLD"
+rm -f "$DOC_NEW"
 mkdir -p "$TMP" /mnt/us/extensions /mnt/us/documents
 
 curl -fL --retry 3 -o "$TMP/gnomegames.zip" "$URL"
@@ -31,27 +35,27 @@ if [ ! -f "$SRC/bin/gnomegames.sh" ] || [ ! -f "$SRC/shortcut_gnomechess.sh" ]; 
   exit 1
 fi
 
-rm -rf "$TARGET.kpm-new"
-mkdir -p "$TARGET.kpm-new"
-cp -R "$SRC"/. "$TARGET.kpm-new/"
-chmod 755 "$TARGET.kpm-new/bin/gnomegames.sh" 2>/dev/null || true
-chmod 755 "$TARGET.kpm-new/shortcut_gnomechess.sh" 2>/dev/null || true
-printf '%s\n' 'managed-by=kindlebrew' > "$TARGET.kpm-new/.kindlebrew-managed"
-
-rm -rf "$TARGET"
-mv "$TARGET.kpm-new" "$TARGET"
+rm -rf "$NEW"
+mkdir -p "$NEW"
+cp -R "$SRC"/. "$NEW/"
+chmod 755 "$NEW/bin/gnomegames.sh" 2>/dev/null || true
+chmod 755 "$NEW/shortcut_gnomechess.sh" 2>/dev/null || true
+printf '%s\n' 'managed-by=kindlebrew' > "$NEW/.kindlebrew-managed"
 
 if [ ! -f "lib/libGL.so.1" ]; then
   echo "Kindlebrew Chess compatibility shim is missing."
-  rm -rf "$TMP"
+  rm -rf "$TMP" "$NEW"
   exit 1
 fi
 
-mkdir -p "$TARGET/lib"
-cp "lib/libGL.so.1" "$TARGET/lib/libGL.so.1"
-chmod 755 "$TARGET/lib/libGL.so.1" 2>/dev/null || true
+mkdir -p "$NEW/lib"
+if ! cp "lib/libGL.so.1" "$NEW/lib/libGL.so.1"; then
+  rm -rf "$TMP" "$NEW"
+  exit 1
+fi
+chmod 755 "$NEW/lib/libGL.so.1" 2>/dev/null || true
 
-cat > "$DOC" <<'EOF'
+cat > "$DOC_NEW" <<'EOF'
 #!/bin/sh
 # Name: GNOME Chess
 # Author: GNOME Games / Kindlebrew
@@ -61,7 +65,32 @@ TARGET="/mnt/us/extensions/gnomegames"
 export LD_LIBRARY_PATH="$TARGET/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec sh "$TARGET/bin/gnomegames.sh" glchess
 EOF
-chmod 755 "$DOC" 2>/dev/null || true
+chmod 755 "$DOC_NEW" 2>/dev/null || true
 
-rm -rf "$TMP"
+had_old=0
+if [ -e "$TARGET" ]; then
+  if ! mv "$TARGET" "$OLD"; then
+    rm -rf "$TMP" "$NEW"
+    rm -f "$DOC_NEW"
+    exit 1
+  fi
+  had_old=1
+fi
+
+if ! mv "$NEW" "$TARGET"; then
+  [ "$had_old" -eq 0 ] || mv "$OLD" "$TARGET" 2>/dev/null || true
+  rm -rf "$TMP" "$NEW"
+  rm -f "$DOC_NEW"
+  exit 1
+fi
+
+if ! mv -f "$DOC_NEW" "$DOC"; then
+  rm -rf "$TARGET"
+  [ "$had_old" -eq 0 ] || mv "$OLD" "$TARGET" 2>/dev/null || true
+  rm -rf "$TMP"
+  rm -f "$DOC_NEW"
+  exit 1
+fi
+
+rm -rf "$OLD" "$TMP" 2>/dev/null || true
 echo "GNOME Chess installed. Open Gnome Chess from the Kindle library or run ;kpm launch chess."
