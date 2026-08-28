@@ -149,6 +149,11 @@ void kb_fill_circle(KBGame *game, int cx, int cy, int radius, uint8_t gray);
 void kb_blit_gray8(KBGame *game, int x, int y, const uint8_t *src, int width, int height, int src_stride);
 void kb_invert_rect(KBGame *game, KBRect rect);
 
+/* Built-in public-domain 8x8 ASCII bitmap font. bg_gray < 0 means transparent. */
+KBRect kb_measure_text8(const char *text, int scale);
+void kb_draw_text8(KBGame *game, int x, int y, const char *text, int scale,
+                   uint8_t fg_gray, int bg_gray);
+
 #ifdef __cplusplus
 }
 #endif
