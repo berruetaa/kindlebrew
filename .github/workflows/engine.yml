@@ -11,6 +11,7 @@ on:
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
       - 'tools/render-game-scriptlet.py'
       - '.github/workflows/engine.yml'
   pull_request:
@@ -20,6 +21,7 @@ on:
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
       - 'tools/render-game-scriptlet.py'
       - '.github/workflows/engine.yml'
 
