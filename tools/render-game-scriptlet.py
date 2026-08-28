@@ -101,6 +101,63 @@ def write_scriptlet(path: pathlib.Path, text: str) -> None:
     print(f"generated {path}")
 
 
+def render_library_installer(
+    *,
+    package_id: str,
+    document_name: str,
+    cover_filename: str | None,
+) -> str:
+    install_dir = f"/mnt/us/extensions/kindlebrew-{package_id}"
+    document_path = f"/mnt/us/documents/{document_name}"
+    cover_value = cover_filename or ""
+
+    # Every interpolated value has already passed strict filename/id validation.
+    return f"""#!/bin/sh
+set -eu
+
+TARGET='{install_dir}'
+DOC='{document_path}'
+COVER='{cover_value}'
+
+install_library() {{
+    if [ ! -f scriptlet.sh ]; then
+        echo 'Kindlebrew library Scriptlet is missing.' >&2
+        exit 1
+    fi
+    if [ -n "$COVER" ] && [ ! -f "$COVER" ]; then
+        echo "Declared Kindlebrew cover is missing: $COVER" >&2
+        exit 1
+    fi
+
+    mkdir -p "$TARGET" /mnt/us/documents
+
+    # Clear stale artwork first in case an upgrade changed format or dropped it.
+    rm -f "$TARGET/cover.svg" "$TARGET/cover.png" "$TARGET/cover.jpg" "$TARGET/cover.jpeg"
+    if [ -n "$COVER" ]; then
+        cp "$COVER" "$TARGET/$COVER"
+        # sh_integration validates path icons with access(R_OK|W_OK).
+        chmod 666 "$TARGET/$COVER" 2>/dev/null || true
+    fi
+
+    # Artwork must exist before the scanner sees the updated metadata.
+    cp scriptlet.sh "$DOC"
+    chmod 755 "$DOC" 2>/dev/null || true
+    touch "$DOC" 2>/dev/null || true
+}}
+
+uninstall_library() {{
+    rm -f "$DOC"
+    rm -rf "$DOC.sdr"
+}}
+
+case "${{1:-install}}" in
+    install) install_library ;;
+    uninstall) uninstall_library ;;
+    *) echo 'usage: library-install.sh [install|uninstall]' >&2; exit 2 ;;
+esac
+"""
+
+
 def stage_package_library(package_source: pathlib.Path, stage_dir: pathlib.Path) -> None:
     manifest_path = package_source / "manifest.json"
     library_path = package_source / "library.json"
@@ -156,6 +213,14 @@ def stage_package_library(package_source: pathlib.Path, stage_dir: pathlib.Path)
 
     stage_dir.mkdir(parents=True, exist_ok=True)
     write_scriptlet(stage_dir / "scriptlet.sh", scriptlet)
+    write_scriptlet(
+        stage_dir / "library-install.sh",
+        render_library_installer(
+            package_id=package_id,
+            document_name=document_name,
+            cover_filename=cover_filename,
+        ),
+    )
 
     # Keep the declaration in the package for diagnostics/future tooling.
     shutil.copy2(library_path, stage_dir / "library.json")
