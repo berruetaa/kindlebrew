@@ -40,6 +40,36 @@ static void test_damage(void) {
     kb_destroy(g);
 }
 
+static void test_damage_compaction(void) {
+    KBRect src[6] = {
+        {0,0,10,10},
+        {12,0,10,10},
+        {100,0,10,10},
+        {112,0,10,10},
+        {0,100,10,10},
+        {100,100,10,10}
+    };
+    KBRect out[KB_MAX_DIRTY_RECTS];
+
+    int n = kb_damage_compact(src, 6, out, 4);
+    assert(n == 4);
+
+    /*
+     * The two obvious adjacent pairs should be cheaper than bridging the
+     * hundred-pixel gaps. We do not rely on output order; verify that no
+     * compacted rectangle spans almost the whole synthetic screen.
+     */
+    for (int i = 0; i < n; ++i) {
+        assert(out[i].w < 80);
+        assert(out[i].h < 80);
+    }
+
+    n = kb_damage_compact(src, 6, out, 1);
+    assert(n == 1);
+    assert(out[0].x == 0 && out[0].y == 0);
+    assert(out[0].w == 122 && out[0].h == 110);
+}
+
 static void test_canvas(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -220,6 +250,7 @@ static void test_refresh_policy(void) {
 int main(void) {
     test_rects();
     test_damage();
+    test_damage_compaction();
     test_canvas();
     test_text();
     test_event_queue_pressure();
