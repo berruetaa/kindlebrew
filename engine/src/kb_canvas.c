@@ -13,14 +13,16 @@ static void fill_rect_pixels(KBGame *game, KBRect rect, uint8_t gray) {
     rect = kb_rect_clip(rect, game->canvas.width, game->canvas.height);
     if (kb_rect_empty(rect)) return;
     for (int y = rect.y; y < rect.y + rect.h; ++y) {
-        memset(game->canvas.pixels + (size_t)y * game->canvas.stride + rect.x, gray, (size_t)rect.w);
+        size_t off = (size_t)y * (size_t)game->canvas.stride + (size_t)rect.x;
+        memset(game->canvas.pixels + off, gray, (size_t)rect.w);
     }
 }
 
 void kb_clear(KBGame *game, uint8_t gray) {
     if (!game || !game->canvas.pixels) return;
     for (int y = 0; y < game->canvas.height; ++y) {
-        memset(game->canvas.pixels + (size_t)y * game->canvas.stride, gray, (size_t)game->canvas.width);
+        size_t off = (size_t)y * (size_t)game->canvas.stride;
+        memset(game->canvas.pixels + off, gray, (size_t)game->canvas.width);
     }
     kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, mono(gray));
 }
@@ -105,8 +107,10 @@ void kb_blit_gray8(KBGame *game, int x, int y, const uint8_t *src, int width, in
     int sy = dst.y - y;
     bool is_mono = true;
     for (int row = 0; row < dst.h; ++row) {
-        const uint8_t *s = src + (size_t)(sy + row) * src_stride + sx;
-        uint8_t *d = game->canvas.pixels + (size_t)(dst.y + row) * game->canvas.stride + dst.x;
+        size_t src_off = (size_t)(sy + row) * (size_t)src_stride + (size_t)sx;
+        size_t dst_off = (size_t)(dst.y + row) * (size_t)game->canvas.stride + (size_t)dst.x;
+        const uint8_t *s = src + src_off;
+        uint8_t *d = game->canvas.pixels + dst_off;
         memcpy(d, s, (size_t)dst.w);
         if (is_mono) {
             for (int col = 0; col < dst.w; ++col) {
@@ -123,7 +127,8 @@ void kb_invert_rect(KBGame *game, KBRect rect) {
     if (kb_rect_empty(rect)) return;
     bool is_mono = true;
     for (int y = rect.y; y < rect.y + rect.h; ++y) {
-        uint8_t *p = game->canvas.pixels + (size_t)y * game->canvas.stride + rect.x;
+        size_t off = (size_t)y * (size_t)game->canvas.stride + (size_t)rect.x;
+        uint8_t *p = game->canvas.pixels + off;
         for (int x = 0; x < rect.w; ++x) {
             p[x] = (uint8_t)(255U - p[x]);
             if (!mono(p[x])) is_mono = false;
