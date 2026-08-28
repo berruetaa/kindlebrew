@@ -59,6 +59,34 @@ static void test_canvas(void) {
     kb_destroy(g);
 }
 
+static void test_text(void) {
+    KBRect m = kb_measure_text8("AB\nC", 2);
+    assert(m.w == 32 && m.h == 32);
+
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 64;
+    cfg.height = 32;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    kb_damage_reset(g);
+    kb_clear(g, 255);
+    kb_damage_reset(g);
+    kb_draw_text8(g, 0, 0, "A", 1, 0, -1);
+    assert(g->damage.count == 1);
+    assert(g->damage.rects[0].w == 8 && g->damage.rects[0].h == 8);
+
+    const KBCanvas *c = kb_canvas(g);
+    int black = 0;
+    for (int y = 0; y < 8; ++y)
+        for (int x = 0; x < 8; ++x)
+            if (c->pixels[y*c->stride+x] == 0) ++black;
+    assert(black > 0);
+
+    kb_destroy(g);
+}
+
 static void test_refresh_policy(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -108,6 +136,7 @@ int main(void) {
     test_rects();
     test_damage();
     test_canvas();
+    test_text();
     test_refresh_policy();
     puts("kbgame: all host tests passed");
     return 0;
