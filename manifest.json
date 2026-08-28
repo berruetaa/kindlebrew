@@ -98,6 +98,25 @@
           ]
         }
       ]
+    },
+    "ink2048": {
+      "name": "Ink 2048",
+      "author": "Kindlebrew",
+      "description": "E-ink native 2048 built on Kindlebrew Game Engine, with fast interactive updates and grayscale settling.",
+      "artifacts": [
+        {
+          "url": "repo/packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg",
+          "version": [
+            1,
+            0,
+            0
+          ],
+          "dependencies": [],
+          "supported_platforms": [
+            "kindlehf"
+          ]
+        }
+      ]
     }
   }
 }
