@@ -42,6 +42,16 @@ jobs:
           test -f build/upstream-gnomegames/unpacked/gnomegames/shortcut_gnomechess.sh
           test -f build/upstream-gnomegames/unpacked/gnomegames/shortcut_gnomine.sh
 
+      - name: Inspect Chess runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=build/upstream-gnomegames/unpacked/gnomegames/bin/armhf/glchess
+          echo '=== NEEDED ==='
+          readelf -d "$BIN" | grep NEEDED || true
+          echo '=== Undefined GL/GLX symbols ==='
+          readelf -Ws "$BIN" | awk '$7 == "UND" {print $8}' | grep -E '^(gl|glX|glu)' | sort -u || true
+
       - name: Assemble KPM wrappers
         shell: bash
         run: |
