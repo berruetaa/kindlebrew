@@ -1,0 +1,11 @@
+Ink 2048 and Kindlebrew Game Engine are distributed under GPL-3.0-or-later.
+
+Corresponding source:
+https://github.com/berruetaa/kindlebrew/tree/main/games/ink2048
+https://github.com/berruetaa/kindlebrew/tree/main/engine
+
+The shipped engine statically links FBInk.
+Pinned FBInk source:
+https://github.com/KindleModding/FBInk/tree/76557104a55ea163769464e59668e26f6af299ef
+
+The bitmap font in engine/third_party/font8x8_basic.h is Public Domain; provenance is documented in engine/docs/research-map.md.
