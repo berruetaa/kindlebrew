@@ -60,6 +60,56 @@ jobs:
           test "$(wc -l < "$tmp")" -le 6
           head -n 6 "$tmp" | grep -F '# Icon: /mnt/us/extensions/kindlebrew-cover-fixture/cover.png'
           head -n 6 "$tmp" | grep -F '# DontUseFBInk'
+          sh -n "$tmp"
+
+          fixture="$(mktemp -d)"
+          mkdir -p "$fixture/src" "$fixture/stage"
+          cat > "$fixture/src/manifest.json" <<'JSON'
+          {
+            "manifest_version": 2,
+            "id": "cover-fixture",
+            "name": "Cover Fixture",
+            "author": "Kindlebrew",
+            "description": "CI fixture",
+            "version": [1, 0, 0],
+            "dependencies": [],
+            "supported_platforms": ["kindlehf"]
+          }
+          JSON
+          cat > "$fixture/src/library.json" <<'JSON'
+          {
+            "schema_version": 1,
+            "name": "Cover Fixture",
+            "author": "Kindlebrew",
+            "document_name": "Cover-Fixture.sh",
+            "legacy_document_names": ["Old-Cover-Fixture.sh"],
+            "cover": "cover.png"
+          }
+          JSON
+          : > "$fixture/src/cover.png"
+          python tools/render-game-scriptlet.py \
+            --package-source "$fixture/src" \
+            --stage-dir "$fixture/stage"
+          test -f "$fixture/stage/cover.png"
+          sh -n "$fixture/stage/scriptlet.sh"
+          sh -n "$fixture/stage/library-install.sh"
+          grep -F 'rm -f "/mnt/us/documents/Old-Cover-Fixture.sh"' \
+            "$fixture/stage/library-install.sh"
+          grep -F '# Icon: /mnt/us/extensions/kindlebrew-cover-fixture/cover.png' \
+            "$fixture/stage/scriptlet.sh"
+
+          # Stock-library SVG rendering is not part of the stable contract.
+          if python tools/render-game-scriptlet.py \
+            --name 'Bad SVG' \
+            --author 'Kindlebrew' \
+            --package-id bad-svg \
+            --install-dir /mnt/us/extensions/kindlebrew-bad-svg \
+            --cover-filename cover.svg \
+            --output "$fixture/bad.sh"; then
+            echo 'SVG cover unexpectedly accepted.' >&2
+            exit 1
+          fi
+          rm -rf "$fixture"
 
       - name: Run AddressSanitizer and UndefinedBehaviorSanitizer
         env:
