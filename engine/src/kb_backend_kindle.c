@@ -406,6 +406,25 @@ static void handle_power_line(KBGame *game, const char *line) {
         return;
     }
 
+    if (strncmp(line, "readyToSuspend", 14) == 0) {
+        int delay = parse_event_int(line, "readyToSuspend");
+        if (!k->suspended) {
+            /*
+             * Normally goingToScreenSaver arrived first. Treat ReadyToSuspend
+             * as a final fallback checkpoint on firmware paths that skipped
+             * the screensaver notification, but never emit duplicate SUSPENDs.
+             */
+            k->suspended = true;
+            k->last_suspend_ms = now;
+            reset_touch_state(k);
+            ev.type = KB_EVENT_SUSPEND;
+            ev.source = 2; /* readyToSuspend fallback */
+            ev.value = delay;
+            kb_event_push(game, &ev);
+        }
+        return;
+    }
+
     if (strncmp(line, "wakeupFromSuspend", 17) == 0) {
         int raw = parse_event_int(line, "wakeupFromSuspend");
         if (raw > 0) k->last_suspend_duration_ms = (uint64_t)(unsigned)raw * 1000ULL;
