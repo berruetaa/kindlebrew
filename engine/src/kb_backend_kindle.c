@@ -738,6 +738,16 @@ static void process_input_event(KBGame *game, KBInputDev *dev, const struct inpu
     if (ie->type == EV_SYN && ie->code == SYN_REPORT) process_syn(game, dev);
 }
 
+static void close_unclaimed_scan_fds(FBInkInputDevice *scan, size_t count) {
+    if (!scan) return;
+    for (size_t i = 0; i < count; ++i) {
+        if (scan[i].fd >= 0) {
+            close(scan[i].fd);
+            scan[i].fd = -1;
+        }
+    }
+}
+
 static int setup_input(KBGame *game) {
     KBKindle *k = (KBKindle *)game->backend;
     size_t count = 0;
@@ -757,6 +767,7 @@ static int setup_input(KBGame *game) {
         KBInputDev *d = &k->input[k->input_count++];
         memset(d, 0, sizeof(*d));
         d->fd = scan[i].fd;
+        scan[i].fd = -1; /* ownership transferred to KBKindle */
         harden_input_fd(d->fd);
         d->type = scan[i].type;
         d->slot = 0;
@@ -779,9 +790,10 @@ static int setup_input(KBGame *game) {
     }
 
     /*
-     * scan is only the descriptor table. The matched file descriptors are
-     * intentionally kept open by FBInk for the caller; we own/close them now.
+     * FBInk closes unmatched fds itself. Close any still-open matched fd that
+     * we did not adopt (e.g., because the fixed input table hit capacity).
      */
+    close_unclaimed_scan_fds(scan, count);
     free(scan);
 
     /* Gyro/rotation events are scanned separately to avoid ABS_PRESSURE false positives on touch/tablet devices. */
@@ -795,10 +807,12 @@ static int setup_input(KBGame *game) {
             KBInputDev *d = &k->input[k->input_count++];
             memset(d, 0, sizeof(*d));
             d->fd = rot[i].fd;
-            (void)fcntl(d->fd, F_SETFD, FD_CLOEXEC);
+            rot[i].fd = -1; /* ownership transferred to KBKindle */
+            harden_input_fd(d->fd);
             d->type = rot[i].type;
             d->slot = 0;
         }
+        close_unclaimed_scan_fds(rot, rot_count);
         free(rot);
     }
 
