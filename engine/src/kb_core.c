@@ -70,6 +70,45 @@ const KBStats *kb_stats(const KBGame *game) {
     return game ? &game->stats : NULL;
 }
 
+int kb_write_diagnostics(const KBGame *game, const char *path) {
+    if (!game || !path || !*path) return -1;
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+
+    const KBDeviceInfo *d = &game->device;
+    const KBStats *s = &game->stats;
+    fprintf(f, "kbgame=%d.%d.%d\n", KB_VERSION_MAJOR, KB_VERSION_MINOR, KB_VERSION_PATCH);
+    fprintf(f, "device_name=%s\n", d->device_name);
+    fprintf(f, "device_codename=%s\n", d->device_codename);
+    fprintf(f, "device_platform=%s\n", d->device_platform);
+    fprintf(f, "screen=%dx%d\n", d->width, d->height);
+    fprintf(f, "dpi=%d\n", d->dpi);
+    fprintf(f, "bpp=%d\n", d->bpp);
+    fprintf(f, "pixel_format=%d\n", d->pixel_format);
+    fprintf(f, "is_mtk=%d\n", d->is_mtk ? 1 : 0);
+    fprintf(f, "can_rotate=%d\n", d->can_rotate ? 1 : 0);
+    fprintf(f, "can_hw_invert=%d\n", d->can_hw_invert ? 1 : 0);
+    fprintf(f, "has_eclipse_waveform=%d\n", d->has_eclipse_waveform ? 1 : 0);
+    fprintf(f, "has_color_panel=%d\n", d->has_color_panel ? 1 : 0);
+    fprintf(f, "can_wait_for_submission=%d\n", d->can_wait_for_submission ? 1 : 0);
+    fprintf(f, "direct_framebuffer_y8=%d\n", d->direct_framebuffer_y8 ? 1 : 0);
+    fprintf(f, "touch_grab_active=%d\n", d->touch_grab_active ? 1 : 0);
+    fprintf(f, "input_devices=%d\n", d->input_devices);
+    fprintf(f, "fbink_version=%s\n", d->fbink_version);
+    fprintf(f, "presents=%llu\n", (unsigned long long)s->presents);
+    fprintf(f, "partial_presents=%llu\n", (unsigned long long)s->partial_presents);
+    fprintf(f, "clean_presents=%llu\n", (unsigned long long)s->clean_presents);
+    fprintf(f, "dirty_pixels=%llu\n", (unsigned long long)s->dirty_pixels);
+    fprintf(f, "refreshed_pixels=%llu\n", (unsigned long long)s->refreshed_pixels);
+    fprintf(f, "last_present_ms=%llu\n", (unsigned long long)s->last_present_ms);
+    fprintf(f, "last_clean_ms=%llu\n", (unsigned long long)s->last_clean_ms);
+    fprintf(f, "partial_limit=%u\n", game->config.partial_refresh_limit);
+    fprintf(f, "clean_interval_ms=%u\n", game->config.clean_interval_ms);
+    fprintf(f, "coverage_x100=%u\n", game->config.accumulated_coverage_x100);
+
+    return fclose(f) == 0 ? 0 : -1;
+}
+
 KBRect kb_rect_clip(KBRect r, int width, int height) {
     if (r.w <= 0 || r.h <= 0 || width <= 0 || height <= 0) return (KBRect){0,0,0,0};
     int64_t x0 = r.x;
