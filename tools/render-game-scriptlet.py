@@ -105,11 +105,16 @@ def render_library_installer(
     *,
     package_id: str,
     document_name: str,
+    legacy_document_names: list[str],
     cover_filename: str | None,
 ) -> str:
     install_dir = f"/mnt/us/extensions/kindlebrew-{package_id}"
     document_path = f"/mnt/us/documents/{document_name}"
     cover_value = cover_filename or ""
+    legacy_paths = " ".join(
+        "'" + f"/mnt/us/documents/{name}".replace("'", "'\\''") + "'"
+        for name in legacy_document_names
+    )
 
     # Every interpolated value has already passed strict filename/id validation.
     return f"""#!/bin/sh
@@ -118,6 +123,15 @@ set -eu
 TARGET='{install_dir}'
 DOC='{document_path}'
 COVER='{cover_value}'
+LEGACY_DOCS="{legacy_paths}"
+
+cleanup_legacy_docs() {{
+    for old_doc in $LEGACY_DOCS; do
+        [ -n "$old_doc" ] || continue
+        rm -f "$old_doc"
+        rm -rf "$old_doc.sdr"
+    done
+}}
 
 install_library() {{
     if [ ! -f scriptlet.sh ]; then
@@ -130,6 +144,7 @@ install_library() {{
     fi
 
     mkdir -p "$TARGET" /mnt/us/documents
+    cleanup_legacy_docs
 
     # Clear stale artwork first in case an upgrade changed format or dropped it.
     rm -f "$TARGET/cover.png" "$TARGET/cover.jpg" "$TARGET/cover.jpeg"
@@ -146,6 +161,7 @@ install_library() {{
 }}
 
 uninstall_library() {{
+    cleanup_legacy_docs
     rm -f "$DOC"
     rm -rf "$DOC.sdr"
 }}
@@ -186,6 +202,24 @@ def stage_package_library(package_source: pathlib.Path, stage_dir: pathlib.Path)
     ):
         raise SystemExit("document_name must be a simple .sh filename")
 
+    raw_legacy = library.get("legacy_document_names", [])
+    if not isinstance(raw_legacy, list) or len(raw_legacy) > 16:
+        raise SystemExit("legacy_document_names must be an array of at most 16 names")
+    legacy_document_names: list[str] = []
+    for value in raw_legacy:
+        if not isinstance(value, str):
+            raise SystemExit("legacy_document_names entries must be strings")
+        if (
+            not SAFE_DOCUMENT.fullmatch(value)
+            or pathlib.PurePosixPath(value).name != value
+        ):
+            raise SystemExit("legacy_document_names entries must be simple .sh filenames")
+        if value == document_name:
+            raise SystemExit("document_name must not appear in legacy_document_names")
+        if value in legacy_document_names:
+            raise SystemExit("legacy_document_names must not contain duplicates")
+        legacy_document_names.append(value)
+
     cover_filename = validate_cover_filename(library.get("cover"))
     discovered = sorted(
         p.name for p in package_source.iterdir() if SAFE_COVER.fullmatch(p.name)
@@ -218,6 +252,7 @@ def stage_package_library(package_source: pathlib.Path, stage_dir: pathlib.Path)
         render_library_installer(
             package_id=package_id,
             document_name=document_name,
+            legacy_document_names=legacy_document_names,
             cover_filename=cover_filename,
         ),
     )
@@ -232,6 +267,7 @@ def stage_package_library(package_source: pathlib.Path, stage_dir: pathlib.Path)
             {
                 "package_id": package_id,
                 "document_name": document_name,
+                "legacy_document_names": legacy_document_names,
                 "install_dir": install_dir,
                 "cover": cover_filename,
             },
