@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 #define KB_VERSION_MAJOR 0
-#define KB_VERSION_MINOR 1
+#define KB_VERSION_MINOR 2
 #define KB_VERSION_PATCH 0
 
 typedef struct KBGame KBGame;
@@ -52,6 +52,11 @@ typedef enum {
     KB_EVENT_HOLD,
     KB_EVENT_SWIPE,
     KB_EVENT_KEY,
+    KB_EVENT_TIMER,
+    KB_EVENT_SUSPEND,
+    KB_EVENT_RESUME,
+    KB_EVENT_RESIZE,
+    KB_EVENT_ORIENTATION,
     KB_EVENT_QUIT
 } KBEventType;
 
@@ -67,9 +72,15 @@ typedef struct {
     int dy;
     int key;
     int value;
+    int width;
+    int height;
+    int orientation;          /* degrees clockwise: 0, 90, 180, 270 */
+    int source;               /* backend-specific source value, 0 if unknown */
+    uint64_t duration_ms;     /* suspend duration when known */
 } KBEvent;
 
 typedef struct {
+    const char *app_id;       /* stable [A-Za-z0-9._-] id for persistent data */
     const char *title;
     int width;                  /* 0 = backend/native width */
     int height;                 /* 0 = backend/native height */
@@ -137,8 +148,22 @@ void kb_damage_mono(KBGame *game, KBRect rect, bool monochrome);
 int kb_present(KBGame *game, KBRefreshMode mode);
 int kb_force_clean(KBGame *game);
 
-/* Input */
+/* Events & timers */
 int kb_poll_event(KBGame *game, KBEvent *event, int timeout_ms);
+int kb_timer_start(KBGame *game, int id, unsigned delay_ms, unsigned repeat_ms);
+int kb_timer_cancel(KBGame *game, int id);
+void kb_timer_cancel_all(KBGame *game);
+
+/* Deterministic RNG. A non-zero seed is chosen automatically at kb_create(). */
+void kb_rng_seed(KBGame *game, uint64_t seed);
+uint32_t kb_random_u32(KBGame *game);
+uint32_t kb_random_range(KBGame *game, uint32_t upper_exclusive);
+
+/* Persistent user data. kb_data_path creates the app directory when needed. */
+int kb_data_path(KBGame *game, const char *filename, char *out, size_t out_size);
+int kb_save_atomic(const char *path, const void *data, size_t size);
+void *kb_load_file(const char *path, size_t *size_out);
+void kb_free(void *ptr);
 
 /* Drawing: 0 = black, 255 = white. Drawing functions mark damage automatically. */
 void kb_clear(KBGame *game, uint8_t gray);
