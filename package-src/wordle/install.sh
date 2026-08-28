@@ -9,10 +9,6 @@ TARGET="$DOCS/kwordle"
 SCRIPT="$DOCS/kwordle.sh"
 MARKER="$TARGET/.kindlebrew-managed"
 
-if [ "${KPM_PLATFORM:-}" != "kindlehf" ]; then
-  echo "KWordle package supports kindlehf only (got: ${KPM_PLATFORM:-unknown})."
-  exit 1
-fi
 
 if { [ -e "$TARGET" ] || [ -e "$SCRIPT" ]; } && [ ! -f "$MARKER" ]; then
   echo "Existing KWordle installation is not managed by Kindlebrew; refusing to overwrite it."
