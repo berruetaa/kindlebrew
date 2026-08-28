@@ -18,7 +18,7 @@ All Kindlebrew package workflows must call:
 bash tools/kpm-pack.sh <staging-directory> <output.kpkg>
 ~~~
 
-The wrapper pins the upstream KPM `kpm-helper.py`, asks it to perform `package pack`, then validates the result independently.
+The wrapper pins the `kpm-helper.py` from KPM 0.2.2 (`799adf...`), the revision currently shipped by Vera/jb.sh, asks it to perform `package pack`, then validates the result independently.
 
 Current validation gates:
 
@@ -53,7 +53,7 @@ SOURCE.txt
 payload/
 ~~~
 
-Additional ordinary assets such as `cover.svg` or a generated `scriptlet.sh` are allowed. Keep the package root intentionally small and deterministic.
+Additional ordinary assets such as `cover.png` or generated library integration scripts are allowed. Keep the package root intentionally small and deterministic.
 
 ## Workflow rule
 
