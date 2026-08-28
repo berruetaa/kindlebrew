@@ -54,19 +54,20 @@ jobs:
             cp "package-src/$pkg/launch.sh" "build/$pkg/launch.sh"
             cp "package-src/$pkg/uninstall.sh" "build/$pkg/uninstall.sh"
             chmod 755 "build/$pkg/install.sh" "build/$pkg/launch.sh" "build/$pkg/uninstall.sh"
-            PKG="$pkg" python - <<'PY'
-            import os
-            import tarfile
-
-            pkg = os.environ['PKG']
-            src = f'build/{pkg}'
-            out = f'packages/{pkg}/artifacts/{pkg}_1.1.0_kindlehf.kpkg'
-            with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
-                for name in sorted(os.listdir(src)):
-                    archive.add(os.path.join(src, name), arcname=name)
-            print('packed', out)
-            PY
           done
+
+          python - <<'PY'
+          import os
+          import tarfile
+
+          for pkg in ("chess", "mines"):
+              src = f"build/{pkg}"
+              out = f"packages/{pkg}/artifacts/{pkg}_1.1.0_kindlehf.kpkg"
+              with tarfile.open(out, "w:gz", compresslevel=5) as archive:
+                  for name in sorted(os.listdir(src)):
+                      archive.add(os.path.join(src, name), arcname=name)
+              print("packed", out)
+          PY
 
       - name: Validate packages
         shell: bash
