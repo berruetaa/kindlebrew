@@ -247,6 +247,35 @@ static void test_long_suspend_timer_catchup(void) {
     kb_destroy(g);
 }
 
+static void test_timer_deadline_saturation(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 8;
+    cfg.height = 8;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    assert(kb_timer_start(g, 88, 1, 1) == 0);
+    KBTimer *timer = NULL;
+    for (int i = 0; i < KB_MAX_TIMERS; ++i) {
+        if (g->timers[i].active && g->timers[i].id == 88) {
+            timer = &g->timers[i];
+            break;
+        }
+    }
+    assert(timer);
+    timer->due_ms = 0;
+    timer->repeat_ms = 1;
+
+    KBEvent ev;
+    assert(kb_timer_pop_due(g, &ev, UINT64_MAX) == 1);
+    assert(ev.type == KB_EVENT_TIMER && ev.id == 88);
+    assert(!timer->active);
+    assert(kb_timer_pop_due(g, &ev, UINT64_MAX) == 0);
+
+    kb_destroy(g);
+}
+
 static void test_runtime_services(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -373,6 +402,7 @@ int main(void) {
     test_text();
     test_event_queue_pressure();
     test_long_suspend_timer_catchup();
+    test_timer_deadline_saturation();
     test_runtime_services();
     test_present_failure_rolls_back_waveform_state();
     test_refresh_policy();
