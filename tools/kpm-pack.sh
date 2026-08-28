@@ -41,69 +41,8 @@ fi
 
 python "$helper" package pack "$src" "$out" --compression 5
 
-# Structural checks intentionally mirror assumptions in KPM's libarchive path.
-python - "$out" <<'PY'
-import json
-import pathlib
-import sys
-import tarfile
-
-path = pathlib.Path(sys.argv[1])
-with path.open("rb") as fh:
-    assert fh.read(2) == b"\x1f\x8b", "KPM v2 package must be gzip-compressed"
-
-with tarfile.open(path, "r:gz") as archive:
-    members = archive.getmembers()
-    names = [m.name for m in members]
-
-    assert names, "empty KPM package"
-    assert "manifest.json" in names, f"manifest.json must be at archive root: {names}"
-    assert len(names) == len(set(names)), "duplicate archive entry"
-
-    for member in members:
-        p = pathlib.PurePosixPath(member.name)
-        assert not p.is_absolute(), f"absolute archive path: {member.name}"
-        assert ".." not in p.parts, f"path traversal in archive: {member.name}"
-        assert member.name not in ("rootfs", "startup.sh"), (
-            f"reserved KPM package path: {member.name}"
-        )
-        if member.issym() or member.islnk():
-            target = pathlib.PurePosixPath(member.linkname)
-            assert not target.is_absolute(), f"absolute link target: {member.name} -> {member.linkname}"
-            assert ".." not in target.parts, f"escaping link target: {member.name} -> {member.linkname}"
-
-    manifest = json.load(archive.extractfile("manifest.json"))
-    assert manifest["manifest_version"] == 2, manifest
-    assert isinstance(manifest["id"], str) and manifest["id"], manifest
-    assert isinstance(manifest["version"], list) and len(manifest["version"]) == 3, manifest
-
-print(f"validated KPM structure: {path}")
-PY
-
-# KPM 0.2.x extracts .kpkg files with libarchive. CI installs bsdtar from
-# libarchive-tools, so this is a second parser independent from Python tarfile.
-if ! command -v bsdtar >/dev/null 2>&1; then
-    echo "bsdtar is required: install libarchive-tools" >&2
-    exit 3
-fi
-bsdtar -tf "$out" >/dev/null
-
-extract_dir="$(mktemp -d)"
-trap 'rm -rf "$extract_dir"' EXIT INT TERM
-bsdtar -xf "$out" -C "$extract_dir"
-test -f "$extract_dir/manifest.json"
-for script in install.sh launch.sh uninstall.sh; do
-    if [ -f "$extract_dir/$script" ]; then
-        if grep -q "$(printf '\r')" "$extract_dir/$script"; then
-            echo "CRLF/CR detected in $script; refusing Kindle package" >&2
-            exit 4
-        fi
-    fi
-done
-rm -rf "$extract_dir"
-trap - EXIT INT TERM
-
-echo "libarchive list+extract OK: $out"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+bash "$SCRIPT_DIR/kpm-validate.sh" "$out"
 
 if [ -n "$previous" ]; then
     if python - "$previous" "$out" <<'PY'
