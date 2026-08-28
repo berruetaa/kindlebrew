@@ -40,7 +40,24 @@ printf '%s\n' 'managed-by=kindlebrew' > "$TARGET.kpm-new/.kindlebrew-managed"
 
 rm -rf "$TARGET"
 mv "$TARGET.kpm-new" "$TARGET"
-cp "$TARGET/shortcut_gnomechess.sh" "$DOC"
+
+if [ ! -f "lib/libGL.so.1" ]; then
+  echo "Kindlebrew Chess compatibility shim is missing."
+  rm -rf "$TMP"
+  exit 1
+fi
+
+mkdir -p "$TARGET/lib"
+cp "lib/libGL.so.1" "$TARGET/lib/libGL.so.1"
+chmod 755 "$TARGET/lib/libGL.so.1" 2>/dev/null || true
+
+cat > "$DOC" <<'EOF'
+#!/bin/sh
+# DontUseFBInk
+TARGET="/mnt/us/extensions/gnomegames"
+export LD_LIBRARY_PATH="$TARGET/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec sh "$TARGET/bin/gnomegames.sh" glchess
+EOF
 chmod 755 "$DOC" 2>/dev/null || true
 
 rm -rf "$TMP"
