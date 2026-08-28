@@ -59,9 +59,8 @@ $(KINDLE_BUILD)/libkbgame.a: $(KINDLE_OBJ)
 
 $(KINDLE_BUILD)/inklab: examples/inklab.c $(KINDLE_BUILD)/libkbgame.a
 	@test -f "$(FBINK_DIR)/Release/libfbink.a" || (echo "Build FBInk staticlib first"; exit 1)
-	@test -f "$(FBINK_DIR)/Release/libfbink_input.a" || (echo "Build FBInk staticinputlib first"; exit 1)
 	$(KCC) $(KINDLE_CPPFLAGS) $(KINDLE_CFLAGS) $< $(KINDLE_BUILD)/libkbgame.a \
-		$(FBINK_DIR)/Release/libfbink_input.a $(FBINK_DIR)/Release/libfbink.a -lm \
+		$(FBINK_DIR)/Release/libfbink.a -lm \
 		$(KINDLE_LDFLAGS) -o $@
 	$(KSTRIP) --strip-unneeded $@
 
