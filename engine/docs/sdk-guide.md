@@ -127,3 +127,7 @@ KBGE 0.2 assumes rendering and event dispatch live on one main thread. Worker th
 ## Error policy
 
 Check kb_create and negative returns from poll/present. Diagnostic strings come from kb_last_error(). Hardware probes should also call kb_write_diagnostics().
+
+## Library identity across upgrades
+
+Keep `library.json.document_name` stable. If a rename is unavoidable, add the previous managed Scriptlet names to `legacy_document_names`; the generated helper cleans the old document and its `.sdr` metadata before installing the new one.
