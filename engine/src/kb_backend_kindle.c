@@ -66,6 +66,7 @@ typedef struct {
     bool suspended;
     uint64_t last_suspend_ms;
     uint64_t last_suspend_duration_ms;
+    uint64_t power_retry_due_ms;
 
     uint64_t rotation_recheck_due_ms;
     int rotation_rechecks_left;
@@ -93,10 +94,51 @@ static void kb_signal_handler(int signo) {
     kb_signal_quit = 1;
 }
 
-static int run_quiet(const char *command) {
-    if (!command) return -1;
-    int rc = system(command);
-    return rc == 0 ? 0 : -1;
+static int run_quiet_argv(const char *file, char *const argv[]) {
+    if (!file || !argv || !argv[0]) return -1;
+
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+
+    if (pid == 0) {
+        int nullfd = open("/dev/null", O_RDWR);
+        if (nullfd >= 0) {
+            (void)dup2(nullfd, STDIN_FILENO);
+            (void)dup2(nullfd, STDOUT_FILENO);
+            (void)dup2(nullfd, STDERR_FILENO);
+            if (nullfd > STDERR_FILENO) close(nullfd);
+        }
+        execvp(file, argv);
+        _exit(127);
+    }
+
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno == EINTR) continue;
+        return -1;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
+}
+
+static int set_prevent_screensaver(bool enabled) {
+    char *argv[] = {
+        (char *)"lipc-set-prop",
+        (char *)"com.lab126.powerd",
+        (char *)"preventScreenSaver",
+        enabled ? (char *)"1" : (char *)"0",
+        NULL
+    };
+    return run_quiet_argv("lipc-set-prop", argv);
+}
+
+static int request_native_repaint(void) {
+    char *argv[] = {
+        (char *)"xrefresh",
+        (char *)"-d",
+        (char *)":0.0",
+        NULL
+    };
+    return run_quiet_argv("/usr/bin/xrefresh", argv);
 }
 
 static void update_device_from_state(KBGame *game) {
@@ -125,7 +167,8 @@ static void refresh_fb_pointer(KBGame *game) {
                    k->fb_state.view_width == k->fb_state.screen_width &&
                    k->fb_state.view_height == k->fb_state.screen_height &&
                    k->fb_state.view_hori_origin == 0 &&
-                   k->fb_state.view_vert_origin == 0;
+                   k->fb_state.view_vert_origin == 0 &&
+                   k->fb_state.current_rota == FB_ROTATE_UR;
     game->device.direct_framebuffer_y8 = k->direct_y8;
 }
 
@@ -187,6 +230,13 @@ static int revalidate_framebuffer(KBGame *game) {
 static int redraw_after_resume(KBGame *game) {
     int rc = revalidate_framebuffer(game);
     if (rc < 0) return -1;
+
+    /*
+     * A layout change invalidates the old coordinate system. The RESIZE event
+     * is already queued; let the game lay itself out before anything is
+     * presented instead of flashing a blank/stretched intermediate frame.
+     */
+    if (rc == 2) return 0;
 
     kb_damage_reset(game);
     kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
@@ -540,26 +590,34 @@ static void process_input_event(KBGame *game, KBInputDev *dev, const struct inpu
 
     if (ie->type == EV_ABS) {
         if ((dev->type & INPUT_ROTATION_EVENT) && ie->code == ABS_PRESSURE) {
+            /*
+             * Kindle accelerometer codes are not globally stable. The older
+             * Oasis mapping groups 17/18 with portrait variants, while newer
+             * Oasis/Scribe kernels use 17/18 for CW/CCW landscape. Preserve
+             * the raw kernel value and only publish degrees for codes whose
+             * meaning is unambiguous across both known mappings.
+             */
             int orientation = -1;
             switch (ie->value) {
-                case 15: case 17: case 19: orientation = 0; break;
+                case 15: case 19: orientation = 0; break;
+                case 16: case 20: orientation = 180; break;
                 case 21: orientation = 90; break;
-                case 16: case 18: case 20: orientation = 180; break;
                 case 22: orientation = 270; break;
-                default: break;
+                case 17: case 18: orientation = -1; break;
+                default: return;
             }
-            if (orientation >= 0) {
-                KBEvent ev;
-                memset(&ev, 0, sizeof(ev));
-                ev.type = KB_EVENT_ORIENTATION;
-                ev.time_ms = kb_now_ms();
-                ev.orientation = orientation;
-                ev.value = ie->value;
-                kb_event_push(game, &ev);
-                KBKindle *k = (KBKindle *)game->backend;
-                k->rotation_recheck_due_ms = ev.time_ms + 150U;
-                k->rotation_rechecks_left = 3;
-            }
+
+            KBEvent ev;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = KB_EVENT_ORIENTATION;
+            ev.time_ms = kb_now_ms();
+            ev.orientation = orientation;
+            ev.value = ie->value;
+            kb_event_push(game, &ev);
+
+            KBKindle *k = (KBKindle *)game->backend;
+            k->rotation_recheck_due_ms = ev.time_ms + 150U;
+            k->rotation_rechecks_left = 3;
             return;
         }
 
@@ -830,6 +888,12 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
                             (int)(k->rotation_recheck_due_ms - now) : 0;
         if (effective_timeout < 0 || until_recheck < effective_timeout) effective_timeout = until_recheck;
     }
+    if (k->power_fd < 0 && k->power_retry_due_ms) {
+        uint64_t now = kb_now_ms();
+        int until_retry = k->power_retry_due_ms > now ?
+                          (int)(k->power_retry_due_ms - now) : 0;
+        if (effective_timeout < 0 || until_retry < effective_timeout) effective_timeout = until_retry;
+    }
 
     int rc = poll(pfds, (nfds_t)n, effective_timeout);
     if (rc < 0) {
@@ -842,7 +906,11 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
         for (int p = 0; p < n; ++p) {
             if (!(pfds[p].revents & POLLIN)) continue;
             if (map[p] < 0) {
-                drain_power_events(game);
+                if (pfds[p].revents & POLLIN) drain_power_events(game);
+                if (pfds[p].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                    teardown_power_events(k);
+                    k->power_retry_due_ms = kb_now_ms() + 1000U;
+                }
                 continue;
             }
             KBInputDev *d = &k->input[map[p]];
@@ -859,13 +927,24 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
     }
 
     uint64_t now = kb_now_ms();
+
+    if (k->power_fd < 0 && k->power_retry_due_ms && now >= k->power_retry_due_ms) {
+        if (setup_power_events(game) == 0) {
+            k->power_retry_due_ms = 0;
+        } else {
+            k->power_retry_due_ms = now + 5000U;
+        }
+    }
+
     if (k->rotation_rechecks_left > 0 && k->rotation_recheck_due_ms &&
         now >= k->rotation_recheck_due_ms) {
         int changed = revalidate_framebuffer(game);
         if (changed > 0) {
-            kb_damage_reset(game);
-            kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
-            (void)kb_present(game, KB_REFRESH_CLEAN);
+            if (changed != 2) {
+                kb_damage_reset(game);
+                kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
+                (void)kb_present(game, KB_REFRESH_CLEAN);
+            }
             k->rotation_rechecks_left = 0;
             k->rotation_recheck_due_ms = 0;
         } else if (changed == 0 && --k->rotation_rechecks_left > 0) {
@@ -903,6 +982,7 @@ static int kindle_init(KBGame *game) {
         kb_set_error(game, "fbink_open failed: %d", k->fbfd);
         return -1;
     }
+    (void)fcntl(k->fbfd, F_SETFD, FD_CLOEXEC);
     int rc = fbink_init(k->fbfd, &k->fb_cfg);
     if (rc < 0) {
         kb_set_error(game, "fbink_init failed: %d", rc);
@@ -944,24 +1024,15 @@ static int kindle_init(KBGame *game) {
     game->device.can_wait_for_submission = k->fb_state.can_wait_for_submission;
     strncpy(game->device.fbink_version, fbink_version(), sizeof(game->device.fbink_version)-1);
 
-    k->fb = fbink_get_fb_pointer(k->fbfd, &k->fb_size);
-    k->direct_y8 = k->fb &&
-                   k->fb_state.pixel_format == FBINK_PXFMT_Y8 &&
-                   k->fb_state.bpp == 8 &&
-                   !k->fb_state.inverted_grayscale &&
-                   k->fb_state.view_width == k->fb_state.screen_width &&
-                   k->fb_state.view_height == k->fb_state.screen_height &&
-                   k->fb_state.view_hori_origin == 0 &&
-                   k->fb_state.view_vert_origin == 0;
-    game->device.direct_framebuffer_y8 = k->direct_y8;
+    refresh_fb_pointer(game);
 
     if (game->config.keep_awake) {
-        if (run_quiet("lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1") == 0)
-            k->keep_awake_set = true;
+        if (set_prevent_screensaver(true) == 0) k->keep_awake_set = true;
     }
 
     if (setup_input(game) != 0) return -1;
-    (void)setup_power_events(game);
+    if (setup_power_events(game) != 0)
+        k->power_retry_due_ms = kb_now_ms() + 5000U;
     game->device.input_devices = k->input_count;
     for (int i = 0; i < k->input_count; ++i) {
         if (k->input[i].grabbed) {
@@ -984,7 +1055,7 @@ static void kindle_shutdown(KBGame *game) {
     teardown_input(k);
 
     if (k->keep_awake_set)
-        (void)run_quiet("lipc-set-prop com.lab126.powerd preventScreenSaver 0 >/dev/null 2>&1");
+        (void)set_prevent_screensaver(false);
 
     if (k->fbfd >= 0) {
         fbink_close(k->fbfd);
@@ -992,7 +1063,7 @@ static void kindle_shutdown(KBGame *game) {
     }
 
     if (game->config.restore_ui_on_exit)
-        (void)run_quiet("/usr/bin/xrefresh -d :0.0 >/dev/null 2>&1");
+        (void)request_native_repaint();
 
     if (k->lockfd >= 0) {
         flock(k->lockfd, LOCK_UN);
