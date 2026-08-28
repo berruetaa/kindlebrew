@@ -29,8 +29,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: kindlebrew-package-writers
-  cancel-in-progress: false
+  group: kbgame-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   host:
