@@ -9,7 +9,7 @@ import re
 import shutil
 
 SAFE_ID = re.compile(r"^[a-z0-9_-]+$")
-SAFE_COVER = re.compile(r"^cover\.(?:svg|png|jpe?g)$", re.IGNORECASE)
+SAFE_COVER = re.compile(r"^cover\.(?:png|jpe?g)$", re.IGNORECASE)
 SAFE_DOCUMENT = re.compile(r"^[A-Za-z0-9._ -]+\.sh$")
 
 
@@ -34,7 +34,7 @@ def validate_cover_filename(value: str | None) -> str | None:
     cover = pathlib.PurePosixPath(value)
     if cover.name != value or not SAFE_COVER.fullmatch(cover.name):
         raise SystemExit(
-            "cover filename must be cover.svg, cover.png, cover.jpg or cover.jpeg"
+            "cover filename must be cover.png, cover.jpg or cover.jpeg"
         )
     return cover.name
 
@@ -132,7 +132,7 @@ install_library() {{
     mkdir -p "$TARGET" /mnt/us/documents
 
     # Clear stale artwork first in case an upgrade changed format or dropped it.
-    rm -f "$TARGET/cover.svg" "$TARGET/cover.png" "$TARGET/cover.jpg" "$TARGET/cover.jpeg"
+    rm -f "$TARGET/cover.png" "$TARGET/cover.jpg" "$TARGET/cover.jpeg"
     if [ -n "$COVER" ]; then
         cp "$COVER" "$TARGET/$COVER"
         # sh_integration validates path icons with access(R_OK|W_OK).
