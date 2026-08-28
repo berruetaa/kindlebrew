@@ -89,6 +89,54 @@ static void test_text(void) {
     kb_destroy(g);
 }
 
+static void test_event_queue_pressure(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 16;
+    cfg.height = 16;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    /* Consecutive motion for the same finger is coalesced to the newest point. */
+    KBEvent move;
+    memset(&move, 0, sizeof(move));
+    move.type = KB_EVENT_TOUCH_MOVE;
+    move.id = 3;
+    for (int i = 0; i < 1000; ++i) {
+        move.x = i;
+        assert(kb_event_push(g, &move) == 0);
+    }
+    KBEvent out;
+    assert(kb_event_pop(g, &out) == 1);
+    assert(out.type == KB_EVENT_TOUCH_MOVE && out.x == 999);
+    assert(kb_event_pop(g, &out) == 0);
+
+    /* Fill with meaningful non-critical events, then prove lifecycle wins. */
+    KBEvent tap;
+    memset(&tap, 0, sizeof(tap));
+    tap.type = KB_EVENT_TAP;
+    for (int i = 0; i < KB_EVENT_QUEUE_CAP - 1; ++i) {
+        tap.id = i;
+        assert(kb_event_push(g, &tap) == 0);
+    }
+
+    KBEvent extra = tap;
+    extra.id = 9999;
+    assert(kb_event_push(g, &extra) == 1); /* rejected rather than evicting */
+
+    KBEvent suspend_ev;
+    memset(&suspend_ev, 0, sizeof(suspend_ev));
+    suspend_ev.type = KB_EVENT_SUSPEND;
+    assert(kb_event_push(g, &suspend_ev) == 0);
+
+    bool saw_suspend = false;
+    while (kb_event_pop(g, &out)) {
+        if (out.type == KB_EVENT_SUSPEND) saw_suspend = true;
+    }
+    assert(saw_suspend);
+    kb_destroy(g);
+}
+
 static void test_runtime_services(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -174,6 +222,7 @@ int main(void) {
     test_damage();
     test_canvas();
     test_text();
+    test_event_queue_pressure();
     test_runtime_services();
     test_refresh_policy();
     puts("kbgame: all host tests passed");
