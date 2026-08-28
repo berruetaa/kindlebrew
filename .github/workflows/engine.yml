@@ -184,7 +184,7 @@ jobs:
           python tools/render-game-scriptlet.py \
             --package-source package-src/ink2048 \
             --stage-dir build/ink2048-kpkg
-          chmod 755 build/ink2048-kpkg/scriptlet.sh
+          chmod 755 build/ink2048-kpkg/scriptlet.sh build/ink2048-kpkg/library-install.sh
 
           bash tools/kpm-pack.sh \
             build/ink2048-kpkg \
@@ -197,7 +197,7 @@ jobs:
           p='packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg'
           with tarfile.open(p, 'r:gz') as t:
               names=set(t.getnames())
-              for required in ('manifest.json','library.json','install.sh','launch.sh','uninstall.sh','LICENSE','SOURCE.txt','scriptlet.sh','payload/ink2048'):
+              for required in ('manifest.json','library.json','install.sh','launch.sh','uninstall.sh','LICENSE','SOURCE.txt','scriptlet.sh','library-install.sh','payload/ink2048'):
                   assert required in names, (required, names)
               m=json.load(t.extractfile('manifest.json'))
           assert m['manifest_version'] == 2
