@@ -65,6 +65,7 @@ uint64_t kb_rect_area(KBRect r);
 bool kb_rect_near(KBRect a, KBRect b, int gap);
 void kb_damage_reset(KBGame *game);
 void kb_damage_add(KBGame *game, KBRect rect, bool monochrome);
+int kb_damage_compact(const KBRect *src, int count, KBRect *dst, int max_rects);
 KBRect kb_damage_bounds(const KBGame *game);
 
 KBRefreshMode kb_policy_choose(KBGame *game, KBRefreshMode requested, uint64_t now_ms, uint64_t dirty_area);
