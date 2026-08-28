@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define KB_MAX_INPUT_DEVICES 16
@@ -56,6 +57,17 @@ typedef struct {
     bool direct_y8;
     bool keep_awake_set;
 
+    int power_fd;
+    pid_t power_pid;
+    char power_buf[512];
+    size_t power_len;
+    bool suspended;
+    uint64_t last_suspend_ms;
+    uint64_t last_suspend_duration_ms;
+
+    uint64_t rotation_recheck_due_ms;
+    int rotation_rechecks_left;
+
     KBInputDev input[KB_MAX_INPUT_DEVICES];
     int input_count;
 
@@ -83,6 +95,244 @@ static int run_quiet(const char *command) {
     if (!command) return -1;
     int rc = system(command);
     return rc == 0 ? 0 : -1;
+}
+
+static void update_device_from_state(KBGame *game) {
+    KBKindle *k = (KBKindle *)game->backend;
+    game->device.width = game->canvas.width;
+    game->device.height = game->canvas.height;
+    game->device.dpi = k->fb_state.screen_dpi;
+    game->device.bpp = (int)k->fb_state.bpp;
+    game->device.pixel_format = (int)k->fb_state.pixel_format;
+    game->device.is_mtk = k->fb_state.is_mtk;
+    game->device.can_rotate = k->fb_state.can_rotate;
+    game->device.can_hw_invert = k->fb_state.can_hw_invert;
+    game->device.has_eclipse_waveform = k->fb_state.has_eclipse_wfm;
+    game->device.has_color_panel = k->fb_state.has_color_panel;
+    game->device.can_wait_for_submission = k->fb_state.can_wait_for_submission;
+    game->device.direct_framebuffer_y8 = k->direct_y8;
+}
+
+static void refresh_fb_pointer(KBGame *game) {
+    KBKindle *k = (KBKindle *)game->backend;
+    refresh_fb_pointer(game);
+    update_device_from_state(game);
+}
+
+static int resize_canvas_for_state(KBGame *game, const FBInkState *state) {
+    int width = (int)state->screen_width;
+    int height = (int)state->screen_height;
+    if (width <= 0 || height <= 0) return -1;
+    if (width == game->canvas.width && height == game->canvas.height) return 0;
+
+    size_t size = (size_t)width * (size_t)height;
+    uint8_t *pixels = malloc(size);
+    if (!pixels) {
+        kb_set_error(game, "out of memory resizing canvas to %dx%d", width, height);
+        return -1;
+    }
+    memset(pixels, game->config.background, size);
+    free(game->canvas.pixels);
+    game->canvas.pixels = pixels;
+    game->canvas.width = width;
+    game->canvas.height = height;
+    game->canvas.stride = width;
+
+    KBEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = KB_EVENT_RESIZE;
+    ev.time_ms = kb_now_ms();
+    ev.width = width;
+    ev.height = height;
+    kb_event_push(game, &ev);
+    return 1;
+}
+
+static int revalidate_framebuffer(KBGame *game) {
+    KBKindle *k = (KBKindle *)game->backend;
+    int rc = fbink_reinit(k->fbfd, &k->fb_cfg);
+    if (rc < 0) {
+        kb_set_error(game, "fbink_reinit failed: %d", rc);
+        return -1;
+    }
+    if (rc == 0) return 0;
+
+    FBInkState state;
+    memset(&state, 0, sizeof(state));
+    fbink_get_state(&k->fb_cfg, &state);
+
+    int resized = resize_canvas_for_state(game, &state);
+    if (resized < 0) return -1;
+
+    k->fb_state = state;
+    refresh_fb_pointer(game);
+    update_device_from_state(game);
+
+    kb_damage_reset(game);
+    kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
+    kb_policy_reset(game, kb_now_ms());
+    return resized ? 2 : 1;
+}
+
+static int redraw_after_resume(KBGame *game) {
+    int rc = revalidate_framebuffer(game);
+    if (rc < 0) return -1;
+
+    kb_damage_reset(game);
+    kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
+    kb_policy_reset(game, kb_now_ms());
+    return kb_present(game, KB_REFRESH_CLEAN);
+}
+
+static int parse_event_int(const char *line, const char *name) {
+    const char *p = line + strlen(name);
+    while (*p == ' ' || *p == '\t') ++p;
+    if (!*p) return 0;
+    char *end = NULL;
+    long v = strtol(p, &end, 10);
+    if (end == p) return 0;
+    if (v > INT_MAX) return INT_MAX;
+    if (v < INT_MIN) return INT_MIN;
+    return (int)v;
+}
+
+static int setup_power_events(KBGame *game) {
+    KBKindle *k = (KBKindle *)game->backend;
+    int p[2];
+    if (pipe(p) != 0) {
+        fprintf(stderr, "kbgame: warning: pipe(powerd): %s\n", strerror(errno));
+        return -1;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(p[0]);
+        close(p[1]);
+        fprintf(stderr, "kbgame: warning: fork(powerd): %s\n", strerror(errno));
+        return -1;
+    }
+
+    if (pid == 0) {
+        close(p[0]);
+        if (dup2(p[1], STDOUT_FILENO) < 0) _exit(126);
+        close(p[1]);
+
+        int nullfd = open("/dev/null", O_WRONLY);
+        if (nullfd >= 0) {
+            (void)dup2(nullfd, STDERR_FILENO);
+            if (nullfd != STDERR_FILENO) close(nullfd);
+        }
+
+        execlp("lipc-wait-event", "lipc-wait-event",
+               "-m", "-s", "0", "com.lab126.powerd",
+               "goingToScreenSaver,outOfScreenSaver,exitingScreenSaver,charging,notCharging,wakeupFromSuspend,readyToSuspend",
+               (char *)NULL);
+        _exit(127);
+    }
+
+    close(p[1]);
+    int flags = fcntl(p[0], F_GETFL, 0);
+    if (flags >= 0) (void)fcntl(p[0], F_SETFL, flags | O_NONBLOCK);
+    (void)fcntl(p[0], F_SETFD, FD_CLOEXEC);
+    k->power_fd = p[0];
+    k->power_pid = pid;
+    return 0;
+}
+
+static void teardown_power_events(KBKindle *k) {
+    if (k->power_fd >= 0) {
+        close(k->power_fd);
+        k->power_fd = -1;
+    }
+    if (k->power_pid > 0) {
+        kill(k->power_pid, SIGINT);
+        for (int i = 0; i < 20; ++i) {
+            pid_t rc = waitpid(k->power_pid, NULL, WNOHANG);
+            if (rc == k->power_pid || rc < 0) {
+                k->power_pid = 0;
+                return;
+            }
+            usleep(10000);
+        }
+        kill(k->power_pid, SIGTERM);
+        (void)waitpid(k->power_pid, NULL, 0);
+        k->power_pid = 0;
+    }
+}
+
+static void reset_touch_state(KBKindle *k) {
+    k->gesture_down = false;
+    k->hold_emitted = false;
+    for (int d = 0; d < k->input_count; ++d) {
+        for (int s = 0; s < KB_MAX_TOUCH_SLOTS; ++s) {
+            memset(&k->input[d].slots[s], 0, sizeof(k->input[d].slots[s]));
+        }
+    }
+}
+
+static void handle_power_line(KBGame *game, const char *line) {
+    KBKindle *k = (KBKindle *)game->backend;
+    uint64_t now = kb_now_ms();
+    KBEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.time_ms = now;
+
+    if (strncmp(line, "goingToScreenSaver", 18) == 0) {
+        int source = parse_event_int(line, "goingToScreenSaver");
+        if (!k->suspended) {
+            k->suspended = true;
+            k->last_suspend_ms = now;
+            reset_touch_state(k);
+            ev.type = KB_EVENT_SUSPEND;
+            ev.source = source;
+            kb_event_push(game, &ev);
+        }
+        return;
+    }
+
+    if (strncmp(line, "wakeupFromSuspend", 17) == 0) {
+        int raw = parse_event_int(line, "wakeupFromSuspend");
+        if (raw > 0) k->last_suspend_duration_ms = (uint64_t)(unsigned)raw * 1000ULL;
+        return;
+    }
+
+    if (strncmp(line, "outOfScreenSaver", 16) == 0) {
+        int source = parse_event_int(line, "outOfScreenSaver");
+        if (redraw_after_resume(game) != 0) {
+            fprintf(stderr, "kbgame: warning: resume redraw failed: %s\n", kb_last_error(game));
+        }
+        k->suspended = false;
+        ev.type = KB_EVENT_RESUME;
+        ev.source = source;
+        ev.duration_ms = k->last_suspend_duration_ms ? k->last_suspend_duration_ms :
+                         (k->last_suspend_ms && now >= k->last_suspend_ms ? now - k->last_suspend_ms : 0);
+        k->last_suspend_duration_ms = 0;
+        kb_event_push(game, &ev);
+        return;
+    }
+}
+
+static void drain_power_events(KBGame *game) {
+    KBKindle *k = (KBKindle *)game->backend;
+    char buf[256];
+    ssize_t n;
+
+    while ((n = read(k->power_fd, buf, sizeof(buf))) > 0) {
+        for (ssize_t i = 0; i < n; ++i) {
+            char ch = buf[i];
+            if (ch == '\n') {
+                k->power_buf[k->power_len] = '\0';
+                if (k->power_len) handle_power_line(game, k->power_buf);
+                k->power_len = 0;
+            } else if (ch != '\r') {
+                if (k->power_len + 1U < sizeof(k->power_buf)) {
+                    k->power_buf[k->power_len++] = ch;
+                } else {
+                    k->power_len = 0;
+                }
+            }
+        }
+    }
 }
 
 static int absinfo_for(int fd, int primary, int fallback, struct input_absinfo *out) {
@@ -272,6 +522,30 @@ static void process_input_event(KBGame *game, KBInputDev *dev, const struct inpu
     KBTouchSlot *s = &dev->slots[slot];
 
     if (ie->type == EV_ABS) {
+        if ((dev->type & INPUT_ROTATION_EVENT) && ie->code == ABS_PRESSURE) {
+            int orientation = -1;
+            switch (ie->value) {
+                case 15: case 17: case 19: orientation = 0; break;
+                case 21: orientation = 90; break;
+                case 16: case 18: case 20: orientation = 180; break;
+                case 22: orientation = 270; break;
+                default: break;
+            }
+            if (orientation >= 0) {
+                KBEvent ev;
+                memset(&ev, 0, sizeof(ev));
+                ev.type = KB_EVENT_ORIENTATION;
+                ev.time_ms = kb_now_ms();
+                ev.orientation = orientation;
+                ev.value = ie->value;
+                kb_event_push(game, &ev);
+                KBKindle *k = (KBKindle *)game->backend;
+                k->rotation_recheck_due_ms = ev.time_ms + 150U;
+                k->rotation_rechecks_left = 3;
+            }
+            return;
+        }
+
         switch (ie->code) {
             case ABS_MT_SLOT:
                 if (ie->value >= 0 && ie->value < KB_MAX_TOUCH_SLOTS) dev->slot = ie->value;
@@ -369,6 +643,23 @@ static int setup_input(KBGame *game) {
      * intentionally kept open by FBInk for the caller; we own/close them now.
      */
     free(scan);
+
+    /* Gyro/rotation events are scanned separately to avoid ABS_PRESSURE false positives on touch/tablet devices. */
+    size_t rot_count = 0;
+    FBInkInputDevice *rot = fbink_input_scan(INPUT_ROTATION_EVENT,
+                                             INPUT_TABLET | INPUT_TOUCHSCREEN,
+                                             NO_RECAP, &rot_count);
+    if (rot) {
+        for (size_t i = 0; i < rot_count && k->input_count < KB_MAX_INPUT_DEVICES; ++i) {
+            if (!rot[i].matched || rot[i].fd < 0) continue;
+            KBInputDev *d = &k->input[k->input_count++];
+            memset(d, 0, sizeof(*d));
+            d->fd = rot[i].fd;
+            d->type = rot[i].type;
+            d->slot = 0;
+        }
+        free(rot);
+    }
 
     if (k->input_count == 0) {
         kb_set_error(game, "no usable Kindle input devices found");
@@ -488,8 +779,8 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
     maybe_emit_hold(game, kb_now_ms());
     if (kb_event_pop(game, event)) return 1;
 
-    struct pollfd pfds[KB_MAX_INPUT_DEVICES];
-    int map[KB_MAX_INPUT_DEVICES];
+    struct pollfd pfds[KB_MAX_INPUT_DEVICES + 1];
+    int map[KB_MAX_INPUT_DEVICES + 1];
     int n = 0;
     for (int i = 0; i < k->input_count; ++i) {
         if (k->input[i].fd < 0) continue;
@@ -497,6 +788,13 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
         pfds[n].events = POLLIN;
         pfds[n].revents = 0;
         map[n] = i;
+        ++n;
+    }
+    if (k->power_fd >= 0) {
+        pfds[n].fd = k->power_fd;
+        pfds[n].events = POLLIN;
+        pfds[n].revents = 0;
+        map[n] = -1;
         ++n;
     }
     if (n == 0) return 0;
@@ -509,6 +807,12 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
         int until_hold = due > now ? (int)(due - now) : 0;
         if (effective_timeout < 0 || until_hold < effective_timeout) effective_timeout = until_hold;
     }
+    if (k->rotation_rechecks_left > 0 && k->rotation_recheck_due_ms) {
+        uint64_t now = kb_now_ms();
+        int until_recheck = k->rotation_recheck_due_ms > now ?
+                            (int)(k->rotation_recheck_due_ms - now) : 0;
+        if (effective_timeout < 0 || until_recheck < effective_timeout) effective_timeout = until_recheck;
+    }
 
     int rc = poll(pfds, (nfds_t)n, effective_timeout);
     if (rc < 0) {
@@ -520,6 +824,10 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
     if (rc > 0) {
         for (int p = 0; p < n; ++p) {
             if (!(pfds[p].revents & POLLIN)) continue;
+            if (map[p] < 0) {
+                drain_power_events(game);
+                continue;
+            }
             KBInputDev *d = &k->input[map[p]];
             struct input_event buf[32];
             ssize_t got;
@@ -533,7 +841,24 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
         }
     }
 
-    maybe_emit_hold(game, kb_now_ms());
+    uint64_t now = kb_now_ms();
+    if (k->rotation_rechecks_left > 0 && k->rotation_recheck_due_ms &&
+        now >= k->rotation_recheck_due_ms) {
+        int changed = revalidate_framebuffer(game);
+        if (changed > 0) {
+            kb_damage_reset(game);
+            kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
+            (void)kb_present(game, KB_REFRESH_CLEAN);
+            k->rotation_rechecks_left = 0;
+            k->rotation_recheck_due_ms = 0;
+        } else if (changed == 0 && --k->rotation_rechecks_left > 0) {
+            k->rotation_recheck_due_ms = now + 150U;
+        } else {
+            k->rotation_recheck_due_ms = 0;
+        }
+    }
+
+    maybe_emit_hold(game, now);
     return kb_event_pop(game, event) ? 1 : 0;
 }
 
@@ -543,6 +868,8 @@ static int kindle_init(KBGame *game) {
     game->backend = k;
     k->fbfd = -1;
     k->lockfd = -1;
+    k->power_fd = -1;
+    k->power_pid = 0;
 
     k->lockfd = open("/tmp/kindlebrew-game-engine.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0600);
     if (k->lockfd < 0 || flock(k->lockfd, LOCK_EX | LOCK_NB) != 0) {
@@ -617,6 +944,7 @@ static int kindle_init(KBGame *game) {
     }
 
     if (setup_input(game) != 0) return -1;
+    (void)setup_power_events(game);
     game->device.input_devices = k->input_count;
     for (int i = 0; i < k->input_count; ++i) {
         if (k->input[i].grabbed) {
@@ -635,6 +963,7 @@ static void kindle_shutdown(KBGame *game) {
     KBKindle *k = game ? (KBKindle *)game->backend : NULL;
     if (!k) return;
 
+    teardown_power_events(k);
     teardown_input(k);
 
     if (k->keep_awake_set)
