@@ -1,0 +1,80 @@
+name: Kindlebrew game engine
+
+on:
+  push:
+    branches:
+      - feat/kindle-game-engine
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and test core
+        run: |
+          set -euo pipefail
+          make -C engine clean test
+          make -C engine all
+
+  kindlehf:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install KindleModding kindlehf toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/KindleModding/koxtoolchain/releases/download/2026.04/kindlehf.tar.gz'
+          sha='d08d3a5cbbaa184cc0cc2279df1d64a71656ab2c1e0223cae324b8d30c8d73e0'
+          curl -fL --retry 3 -o /tmp/kindlehf.tar.gz "$url"
+          echo "$sha  /tmp/kindlehf.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kindlehf.tar.gz -C "$HOME"
+          echo "$HOME/x-tools/arm-kindlehf-linux-gnueabihf/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch pinned FBInk
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/KindleModding/FBInk.git engine/vendor/FBInk
+          git -C engine/vendor/FBInk checkout 76557104a55ea163769464e59668e26f6af299ef
+
+      - name: Build minimal static FBInk
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix=arm-kindlehf-linux-gnueabihf-
+          make -C engine/vendor/FBInk clean
+          make -C engine/vendor/FBInk staticlib staticinputlib \
+            KINDLE=true MINIMAL=true DRAW=true INPUT=true \
+            CROSS_TC=arm-kindlehf-linux-gnueabihf \
+            CC="${prefix}gcc" AR="${prefix}ar" RANLIB="${prefix}ranlib" STRIP="${prefix}strip"
+
+      - name: Cross-build engine and InkLab
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -C engine kindle FBINK_DIR=vendor/FBInk
+          file engine/build/kindle/inklab
+          arm-kindlehf-linux-gnueabihf-readelf -h engine/build/kindle/inklab | grep -E 'Class:|Machine:'
+          arm-kindlehf-linux-gnueabihf-readelf -d engine/build/kindle/inklab | grep NEEDED || true
+          ! arm-kindlehf-linux-gnueabihf-readelf -d engine/build/kindle/inklab | grep -q 'libfbink'
+
+      - name: Upload Kindle smoke-test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: kbgame-inklab-kindlehf
+          path: engine/build/kindle/inklab
