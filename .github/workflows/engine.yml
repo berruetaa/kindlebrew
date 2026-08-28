@@ -3,6 +3,7 @@ name: Kindlebrew game engine
 on:
   push:
     branches:
+      - main
       - feat/kindle-game-engine
     paths:
       - 'engine/**'
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - 'engine/**'
+      - 'package-src/inklab/**'
       - 'games/ink2048/**'
       - 'package-src/ink2048/**'
       - '.github/workflows/engine.yml'
