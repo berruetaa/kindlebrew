@@ -72,7 +72,7 @@ void kb_draw_line(KBGame *game, int x0, int y0, int x1, int y1, int thickness, u
     int miny = oy0 < oy1 ? oy0 : oy1;
     int maxx = ox0 > ox1 ? ox0 : ox1;
     int maxy = oy0 > oy1 ? oy0 : oy1;
-    kb_damage_add(game, (KBRect){minx-r, miny-r, maxx-minx+1+thickness, maxy-miny+1+thickness}, mono(gray));
+    kb_damage_add(game, (KBRect){minx-r, miny-r, maxx-minx+thickness, maxy-miny+thickness}, mono(gray));
 }
 
 void kb_fill_circle(KBGame *game, int cx, int cy, int radius, uint8_t gray) {
