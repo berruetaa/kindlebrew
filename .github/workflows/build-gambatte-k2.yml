@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/kindle-game-engine
     paths:
       - 'package-src/gambatte-k2/**'
       - 'tools/kpm-pack.sh'
