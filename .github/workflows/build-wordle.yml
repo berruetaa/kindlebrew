@@ -7,6 +7,7 @@ on:
     paths:
       - 'package-src/wordle/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
       - '.github/workflows/build-wordle.yml'
 
 permissions:
