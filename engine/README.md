@@ -1,4 +1,4 @@
-# Kindlebrew Game Engine (KBGE)
+# Kindlebrew Game Engine (KBGE) 0.2
 
 A native game runtime designed specifically for jailbroken Kindle e-ink devices.
 
@@ -13,6 +13,10 @@ This is not an LCD game loop with a Kindle backend bolted on. KBGE treats the el
 - FBInk conversion fallback when the framebuffer layout changes.
 - Refresh policy that understands A2, DU, GL16 and GC16.
 - Automatic ghosting budget and periodic clean refresh.
+- MediaTek low-latency mode with automatic restoration.
+- Timers integrated into the event loop.
+- Atomic per-game persistence and deterministic RNG.
+- Suspend/resume/resize/orientation lifecycle events.
 - Touchscreen discovery through FBInk instead of hard-coded event nodes.
 - Exclusive touch capture while a game is active.
 - Clean coexistence with the Kindle framework: no rootfs modifications and no service killing by default.
@@ -27,6 +31,7 @@ This is not an LCD game loop with a Kindle backend bolted on. KBGE treats the el
 int main(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
+    cfg.app_id = "my-game";
     cfg.title = "My Game";
 
     KBGame *g = kb_create(&cfg);
@@ -81,9 +86,22 @@ The CI workflow pins the KindleModding kindlehf toolchain and the same FBInk rev
 
 ## Runtime behavior on Kindle
 
-At startup KBGE takes an exclusive process lock, opens and initializes FBInk, detects framebuffer/device capabilities, allocates a Gray8 canvas, discovers input devices through fbink_input_scan, optionally grabs touch devices with EVIOCGRAB, asks powerd to inhibit the automatic screensaver, and starts from a clean full refresh.
+At startup KBGE takes an exclusive process lock, opens and initializes FBInk, detects framebuffer/device capabilities, allocates a Gray8 canvas, discovers input devices through fbink_input_scan, optionally grabs touch devices with EVIOCGRAB, enables safe low-latency driver policy where supported, asks powerd to inhibit the automatic screensaver, and starts from a clean full refresh.
 
-At shutdown it releases touch grabs, restores the screensaver policy, closes the framebuffer and asks X to repaint the Kindle UI.
+A dedicated LIPC watcher feeds powerd lifecycle events into the same poll loop. On wake, KBGE revalidates FBInk. It restores the canonical canvas when geometry stayed stable; if geometry changed it queues RESIZE and waits for the game to relayout instead of flashing stale content.
+
+At shutdown it releases touch grabs, restores MTK auto-REAGL and the screensaver policy, closes the framebuffer and asks X to repaint the Kindle UI.
+
+## Reference title
+
+`games/ink2048/` is the conformance/reference game. It deliberately exercises gestures, fast interactive updates, grayscale settling, timers, persistence, suspend/resume and resize.
+
+See:
+
+- `docs/sdk-guide.md`
+- `docs/interactive-settle.md`
+- `docs/hardware-matrix.md`
+- `../games/ink2048/README.md`
 
 ## License
 
