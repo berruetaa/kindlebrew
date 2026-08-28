@@ -29,7 +29,8 @@ static void put_scaled_pixel(KBGame *game, int x, int y, int scale, uint8_t gray
     for (int yy = 0; yy < scale; ++yy) {
         int py = y + yy;
         if (py < 0 || py >= game->canvas.height) continue;
-        uint8_t *row = game->canvas.pixels + (size_t)py * game->canvas.stride;
+        size_t off = (size_t)py * (size_t)game->canvas.stride;
+        uint8_t *row = game->canvas.pixels + off;
         for (int xx = 0; xx < scale; ++xx) {
             int px = x + xx;
             if (px >= 0 && px < game->canvas.width) row[px] = gray;
@@ -47,8 +48,8 @@ void kb_draw_text8(KBGame *game, int x, int y, const char *text, int scale,
                                  game->canvas.width, game->canvas.height);
         if (!kb_rect_empty(bg)) {
             for (int row = bg.y; row < bg.y + bg.h; ++row) {
-                memset(game->canvas.pixels + (size_t)row * game->canvas.stride + bg.x,
-                       (uint8_t)bg_gray, (size_t)bg.w);
+                size_t off = (size_t)row * (size_t)game->canvas.stride + (size_t)bg.x;
+                memset(game->canvas.pixels + off, (uint8_t)bg_gray, (size_t)bg.w);
             }
         }
     }
