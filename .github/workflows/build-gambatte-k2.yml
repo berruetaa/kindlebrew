@@ -64,9 +64,17 @@ jobs:
           curl -fL --retry 3 \
             -o build/pkg/LICENSE.upstream \
             https://raw.githubusercontent.com/crazy-electron/gambatte-k2/1.0/LICENSE
-          tar --format=ustar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
-            -cf - -C build/pkg . \
-            | gzip -n > packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg
+          python - <<'PY'
+          import os
+          import tarfile
+
+          src = 'build/pkg'
+          out = 'packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg'
+          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
+              for name in sorted(os.listdir(src)):
+                  archive.add(os.path.join(src, name), arcname=name)
+          print('packed', out)
+          PY
 
       - name: Validate package and repository manifest
         shell: bash
@@ -88,7 +96,7 @@ jobs:
           with open('manifest.json', encoding='utf-8') as f:
               repo=json.load(f)
           artifact=repo['packages']['gambatte-k2']['artifacts'][0]
-          assert artifact['url'] == 'https://raw.githubusercontent.com/berruetaa/kindlebrew/main/packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg'
+          assert artifact['url'] == 'repo/packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg'
           assert artifact['version'] == [1, 0, 0]
           assert artifact['supported_platforms'] == ['kindlehf']
           print('validated', p)
