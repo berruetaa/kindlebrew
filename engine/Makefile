@@ -43,7 +43,7 @@ KAR := $(KINDLE_PREFIX)ar
 KSTRIP := $(KINDLE_PREFIX)strip
 FBINK_DIR ?= ../FBInk
 KINDLE_CPPFLAGS := $(COMMON_CPPFLAGS) -DKB_KINDLE -DFBINK_FOR_KINDLE -DFBINK_MINIMAL -DFBINK_WITH_DRAW -DFBINK_WITH_INPUT -I$(FBINK_DIR)
-KINDLE_CFLAGS := -Os -std=c11 -Wall -Wextra -Wshadow -ffunction-sections -fdata-sections
+KINDLE_CFLAGS := -Os $(COMMON_CFLAGS) -Werror -ffunction-sections -fdata-sections
 KINDLE_LDFLAGS := -Wl,--gc-sections
 KINDLE_SRC := $(CORE_SRC) src/kb_backend_headless.c src/kb_backend_kindle.c
 KINDLE_OBJ := $(patsubst src/%.c,$(KINDLE_BUILD)/%.o,$(KINDLE_SRC))
