@@ -92,6 +92,20 @@ jobs:
           print('KPM workflow writer audit OK:', ', '.join(map(str, pack_workflows)))
           PY
 
+      - name: Audit package lifecycle hooks
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            sh -n "$script"
+          done < <(find package-src -type f -name '*.sh' -print | sort)
+
+          while IFS= read -r uninstall; do
+            if ! grep -Fq '"${1:-}" = "upgrade"' "$uninstall"; then
+              echo "$uninstall does not preserve state for KPM 0.2.2 upgrade" >&2
+              exit 1
+            fi
+          done < <(find package-src -mindepth 2 -maxdepth 2 -type f -name uninstall.sh -print | sort)
+
       - name: Audit repository graph
         run: |
           set -euo pipefail
