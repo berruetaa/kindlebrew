@@ -103,6 +103,10 @@ typedef struct {
     bool has_eclipse_waveform;
     bool has_color_panel;
     bool can_wait_for_submission;
+    bool direct_framebuffer_y8;
+    bool touch_grab_active;
+    int input_devices;
+    char fbink_version[32];
 } KBDeviceInfo;
 
 typedef struct {
@@ -125,6 +129,7 @@ uint8_t *kb_pixels(KBGame *game);
 const KBDeviceInfo *kb_device_info(const KBGame *game);
 const KBStats *kb_stats(const KBGame *game);
 uint64_t kb_now_ms(void);
+int kb_write_diagnostics(const KBGame *game, const char *path);
 
 /* Damage & presentation */
 void kb_damage(KBGame *game, KBRect rect);
