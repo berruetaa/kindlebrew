@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'package-src/wordle/**'
+      - 'tools/kpm-pack.sh'
       - '.github/workflows/build-wordle.yml'
 
 permissions:
@@ -24,6 +25,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install package validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
       - name: Assemble KPM package
         shell: bash
         run: |
@@ -35,19 +41,9 @@ jobs:
           cp package-src/wordle/launch.sh build/wordle/launch.sh
           cp package-src/wordle/uninstall.sh build/wordle/uninstall.sh
           chmod 755 build/wordle/install.sh build/wordle/launch.sh build/wordle/uninstall.sh
-          python - <<'PY'
-          import os
-          import tarfile
-
-          src = 'build/wordle'
-          out = 'packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg'
-
-          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
-              for name in sorted(os.listdir(src)):
-                  archive.add(os.path.join(src, name), arcname=name)
-
-          print('packed', out)
-          PY
+          bash tools/kpm-pack.sh \
+            build/wordle \
+            packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg
 
       - name: Validate package
         shell: bash
