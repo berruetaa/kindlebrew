@@ -8,7 +8,9 @@ DOCS="/mnt/us/documents"
 TARGET="$DOCS/kwordle"
 SCRIPT="$DOCS/kwordle.sh"
 MARKER="$TARGET/.kindlebrew-managed"
-
+NEW="${TARGET}.kpm-new.$$"
+OLD="${TARGET}.kpm-old.$$"
+SCRIPT_NEW="${SCRIPT}.kpm-new.$$"
 
 if { [ -e "$TARGET" ] || [ -e "$SCRIPT" ]; } && [ ! -f "$MARKER" ]; then
   echo "Existing KWordle installation is not managed by Kindlebrew; refusing to overwrite it."
@@ -19,7 +21,8 @@ command -v curl >/dev/null 2>&1 || { echo "curl is required."; exit 1; }
 command -v unzip >/dev/null 2>&1 || { echo "unzip is required."; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required."; exit 1; }
 
-rm -rf "$TMP"
+rm -rf "$TMP" "$NEW" "$OLD"
+rm -f "$SCRIPT_NEW"
 mkdir -p "$TMP" "$DOCS"
 
 curl -fL --retry 3 -o "$TMP/kwordle.zip" "$URL"
@@ -35,11 +38,45 @@ if [ -z "$KWORDLE_DIR" ] || [ -z "$KWORDLE_SCRIPT" ]; then
   exit 1
 fi
 
-rm -rf "$TARGET"
-cp -R "$KWORDLE_DIR" "$TARGET"
-printf '%s\n' 'managed-by=kindlebrew' > "$MARKER"
-cp "$KWORDLE_SCRIPT" "$SCRIPT"
-chmod 755 "$SCRIPT" 2>/dev/null || true
+# Build the complete replacement before touching the managed installation.
+if ! cp -R "$KWORDLE_DIR" "$NEW"; then
+  rm -rf "$TMP" "$NEW"
+  exit 1
+fi
+printf '%s
+' 'managed-by=kindlebrew' > "$NEW/.kindlebrew-managed"
+if ! cp "$KWORDLE_SCRIPT" "$SCRIPT_NEW"; then
+  rm -rf "$TMP" "$NEW"
+  exit 1
+fi
+chmod 755 "$SCRIPT_NEW" 2>/dev/null || true
 
-rm -rf "$TMP"
+had_old=0
+if [ -e "$TARGET" ]; then
+  if ! mv "$TARGET" "$OLD"; then
+    rm -rf "$TMP" "$NEW"
+    rm -f "$SCRIPT_NEW"
+    exit 1
+  fi
+  had_old=1
+fi
+
+if ! mv "$NEW" "$TARGET"; then
+  [ "$had_old" -eq 0 ] || mv "$OLD" "$TARGET" 2>/dev/null || true
+  rm -rf "$TMP" "$NEW"
+  rm -f "$SCRIPT_NEW"
+  exit 1
+fi
+
+# The visible Scriptlet is the commit point. If it cannot be replaced, restore
+# the previous runtime and leave the previous Scriptlet untouched.
+if ! mv -f "$SCRIPT_NEW" "$SCRIPT"; then
+  rm -rf "$TARGET"
+  [ "$had_old" -eq 0 ] || mv "$OLD" "$TARGET" 2>/dev/null || true
+  rm -rf "$TMP"
+  rm -f "$SCRIPT_NEW"
+  exit 1
+fi
+
+rm -rf "$OLD" "$TMP" 2>/dev/null || true
 echo "KWordle installed. Open KWordle from the Kindle library or run ;kpm launch wordle."
