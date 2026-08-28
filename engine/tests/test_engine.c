@@ -40,6 +40,30 @@ static void test_damage(void) {
     kb_destroy(g);
 }
 
+static void test_damage_accumulator_pressure(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 1000;
+    cfg.height = 1000;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    kb_damage_reset(g);
+    for (int i = 0; i < KB_MAX_DIRTY_RECTS + 1; ++i) {
+        int x = (i % 5) * 180;
+        int y = (i / 5) * 180;
+        kb_damage_mono(g, (KBRect){x, y, 10, 10}, true);
+    }
+
+    assert(g->damage.count == KB_MAX_DIRTY_RECTS);
+    KBRect bounds = kb_damage_bounds(g);
+    uint64_t bounds_area = kb_rect_area(bounds);
+    assert(g->damage.area < bounds_area);
+    assert(g->damage.count > 1);
+
+    kb_destroy(g);
+}
+
 static void test_damage_compaction(void) {
     KBRect src[6] = {
         {0,0,10,10},
@@ -280,6 +304,7 @@ static void test_refresh_policy(void) {
 int main(void) {
     test_rects();
     test_damage();
+    test_damage_accumulator_pressure();
     test_damage_compaction();
     test_canvas();
     test_text();
