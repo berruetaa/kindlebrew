@@ -111,10 +111,12 @@ def render_library_installer(
     install_dir = f"/mnt/us/extensions/kindlebrew-{package_id}"
     document_path = f"/mnt/us/documents/{document_name}"
     cover_value = cover_filename or ""
-    legacy_paths = " ".join(
-        "'" + f"/mnt/us/documents/{name}".replace("'", "'\\''") + "'"
-        for name in legacy_document_names
-    )
+    legacy_cleanup = []
+    for name in legacy_document_names:
+        path = f"/mnt/us/documents/{name}"
+        legacy_cleanup.append(f'    rm -f "{path}"')
+        legacy_cleanup.append(f'    rm -rf "{path}.sdr"')
+    legacy_cleanup_text = "\n".join(legacy_cleanup) if legacy_cleanup else "    :"
 
     # Every interpolated value has already passed strict filename/id validation.
     return f"""#!/bin/sh
@@ -123,14 +125,9 @@ set -eu
 TARGET='{install_dir}'
 DOC='{document_path}'
 COVER='{cover_value}'
-LEGACY_DOCS="{legacy_paths}"
 
 cleanup_legacy_docs() {{
-    for old_doc in $LEGACY_DOCS; do
-        [ -n "$old_doc" ] || continue
-        rm -f "$old_doc"
-        rm -rf "$old_doc.sdr"
-    done
+{legacy_cleanup_text}
 }}
 
 install_library() {{
