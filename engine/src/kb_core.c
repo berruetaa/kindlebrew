@@ -17,6 +17,7 @@ void kb_config_defaults(KBConfig *config) {
     config->grab_touch = true;
     config->keep_awake = true;
     config->restore_ui_on_exit = true;
+    config->low_latency_mode = true;
     config->auto_clean = true;
     config->partial_refresh_limit = 24;
     config->clean_interval_ms = 45000;
@@ -92,6 +93,7 @@ int kb_write_diagnostics(const KBGame *game, const char *path) {
     fprintf(f, "has_color_panel=%d\n", d->has_color_panel ? 1 : 0);
     fprintf(f, "can_wait_for_submission=%d\n", d->can_wait_for_submission ? 1 : 0);
     fprintf(f, "direct_framebuffer_y8=%d\n", d->direct_framebuffer_y8 ? 1 : 0);
+    fprintf(f, "mtk_fast_mode_active=%d\n", d->mtk_fast_mode_active ? 1 : 0);
     fprintf(f, "touch_grab_active=%d\n", d->touch_grab_active ? 1 : 0);
     fprintf(f, "input_devices=%d\n", d->input_devices);
     fprintf(f, "fbink_version=%s\n", d->fbink_version);
