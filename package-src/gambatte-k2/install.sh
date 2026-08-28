@@ -5,10 +5,6 @@ TARGET="/mnt/us/extensions/gambatte-k2"
 DOC="/mnt/us/documents/Gambatte-K2.sh"
 TMP="${TARGET}.kpm-new"
 
-if [ "${KPM_PLATFORM:-}" != "kindlehf" ]; then
-  echo "Gambatte-K2 KPM package supports kindlehf only (got: ${KPM_PLATFORM:-unknown})."
-  exit 1
-fi
 
 if [ ! -d "payload" ] || [ ! -f "payload/shortcut_gambatte-k2.sh" ]; then
   echo "Package payload is incomplete: shortcut_gambatte-k2.sh not found."
