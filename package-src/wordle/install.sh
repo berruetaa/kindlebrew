@@ -26,8 +26,8 @@ curl -fL --retry 3 -o "$TMP/kwordle.zip" "$URL"
 echo "$SHA256  $TMP/kwordle.zip" | sha256sum -c -
 unzip -q "$TMP/kwordle.zip" -d "$TMP/unpacked"
 
-KWORDLE_DIR="$(find "$TMP/unpacked" -type d -name kwordle -print -quit)"
-KWORDLE_SCRIPT="$(find "$TMP/unpacked" -type f -name kwordle.sh -print -quit)"
+KWORDLE_DIR="$(find "$TMP/unpacked" -type d -name kwordle -print | sed -n '1p')"
+KWORDLE_SCRIPT="$(find "$TMP/unpacked" -type f -name kwordle.sh -print | sed -n '1p')"
 
 if [ -z "$KWORDLE_DIR" ] || [ -z "$KWORDLE_SCRIPT" ]; then
   echo "Unexpected KWordle archive layout."
