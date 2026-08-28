@@ -5,6 +5,8 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 static void test_rects(void) {
     KBRect r = kb_rect_clip((KBRect){-10,-20,50,60}, 100, 100);
@@ -87,6 +89,41 @@ static void test_text(void) {
     kb_destroy(g);
 }
 
+static void test_runtime_services(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.app_id = "kbgame-tests";
+    cfg.width = 32;
+    cfg.height = 32;
+    KBGame *a = kb_create(&cfg);
+    KBGame *b = kb_create(&cfg);
+    assert(a && b);
+
+    kb_rng_seed(a, 0x12345678ULL);
+    kb_rng_seed(b, 0x12345678ULL);
+    for (int i = 0; i < 16; ++i) assert(kb_random_u32(a) == kb_random_u32(b));
+    for (int i = 0; i < 128; ++i) assert(kb_random_range(a, 7) < 7);
+
+    assert(kb_timer_start(a, 42, 0, 0) == 0);
+    KBEvent ev;
+    assert(kb_poll_event(a, &ev, 0) == 1);
+    assert(ev.type == KB_EVENT_TIMER && ev.id == 42);
+
+    char path[512];
+    assert(kb_data_path(a, "state.bin", path, sizeof(path)) == 0);
+    const char payload[] = "atomic-save";
+    assert(kb_save_atomic(path, payload, sizeof(payload)) == 0);
+    size_t size = 0;
+    char *loaded = kb_load_file(path, &size);
+    assert(loaded && size == sizeof(payload));
+    assert(memcmp(loaded, payload, size) == 0);
+    kb_free(loaded);
+    unlink(path);
+
+    kb_destroy(a);
+    kb_destroy(b);
+}
+
 static void test_refresh_policy(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -137,6 +174,7 @@ int main(void) {
     test_damage();
     test_canvas();
     test_text();
+    test_runtime_services();
     test_refresh_policy();
     puts("kbgame: all host tests passed");
     return 0;
