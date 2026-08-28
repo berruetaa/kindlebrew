@@ -73,11 +73,21 @@ int kb_timer_pop_due(KBGame *game, KBEvent *event, uint64_t now_ms) {
          * slept for hours, and a millisecond timer must not loop millions of
          * times merely to catch its deadline up.
          */
-        uint64_t missed = (now_ms - t->due_ms) / t->repeat_ms + 1U;
-        if (missed > (UINT64_MAX - t->due_ms) / t->repeat_ms) {
-            t->due_ms = UINT64_MAX;
+        uint64_t periods = (now_ms - t->due_ms) / t->repeat_ms;
+        if (periods == UINT64_MAX) {
+            /*
+             * There is no representable deadline strictly after now. Leaving
+             * due_ms at UINT64_MAX while now is UINT64_MAX would make this
+             * timer fire forever, so retire it after delivering this event.
+             */
+            memset(t, 0, sizeof(*t));
         } else {
-            t->due_ms += missed * t->repeat_ms;
+            uint64_t missed = periods + 1U;
+            if (missed > (UINT64_MAX - t->due_ms) / t->repeat_ms) {
+                memset(t, 0, sizeof(*t));
+            } else {
+                t->due_ms += missed * t->repeat_ms;
+            }
         }
     } else {
         memset(t, 0, sizeof(*t));
