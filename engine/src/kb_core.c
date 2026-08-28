@@ -292,15 +292,70 @@ void kb_policy_commit(KBGame *game, KBRefreshMode actual, uint64_t now_ms, uint6
     game->stats.last_present_ms = now_ms;
 }
 
+static bool kb_event_critical(KBEventType type) {
+    return type == KB_EVENT_SUSPEND ||
+           type == KB_EVENT_RESUME ||
+           type == KB_EVENT_RESIZE ||
+           type == KB_EVENT_ORIENTATION ||
+           type == KB_EVENT_QUIT;
+}
+
+static bool kb_event_droppable(const KBEvent *event) {
+    if (!event) return false;
+    if (event->type == KB_EVENT_TOUCH_MOVE) return true;
+    if (event->type == KB_EVENT_KEY && event->value == 2) return true; /* key repeat */
+    return false;
+}
+
 int kb_event_push(KBGame *game, const KBEvent *event) {
     if (!game || !event) return -1;
+
+    /*
+     * Touch motion is naturally lossy: if the consumer has not seen the
+     * previous position yet, replacing it with the newest position reduces
+     * latency and prevents a fast finger/stylus from flooding lifecycle events.
+     */
+    if (event->type == KB_EVENT_TOUCH_MOVE && game->event_head != game->event_tail) {
+        unsigned last = (game->event_tail + KB_EVENT_QUEUE_CAP - 1U) % KB_EVENT_QUEUE_CAP;
+        if (game->events[last].type == KB_EVENT_TOUCH_MOVE &&
+            game->events[last].id == event->id) {
+            game->events[last] = *event;
+            return 0;
+        }
+    }
+
     unsigned next = (game->event_tail + 1U) % KB_EVENT_QUEUE_CAP;
     if (next == game->event_head) {
-        /* Drop oldest motion-like event rather than deadlocking the game loop. */
-        game->event_head = (game->event_head + 1U) % KB_EVENT_QUEUE_CAP;
+        KBEvent compact[KB_EVENT_QUEUE_CAP];
+        unsigned count = 0;
+        int drop = -1;
+
+        for (unsigned i = game->event_head; i != game->event_tail;
+             i = (i + 1U) % KB_EVENT_QUEUE_CAP) {
+            compact[count] = game->events[i];
+            if (drop < 0 && kb_event_droppable(&compact[count])) drop = (int)count;
+            ++count;
+        }
+
+        /*
+         * Prefer sacrificing stale motion/key-repeat noise. If the queue is
+         * composed entirely of meaningful events, a non-critical incoming
+         * event is rejected rather than displacing suspend/resume/quit.
+         */
+        if (drop < 0 && !kb_event_critical(event->type)) return 1;
+        if (drop < 0) drop = 0;
+
+        game->event_head = 0;
+        game->event_tail = 0;
+        for (unsigned i = 0; i < count; ++i) {
+            if ((int)i == drop) continue;
+            game->events[game->event_tail] = compact[i];
+            game->event_tail = (game->event_tail + 1U) % KB_EVENT_QUEUE_CAP;
+        }
     }
+
     game->events[game->event_tail] = *event;
-    game->event_tail = next;
+    game->event_tail = (game->event_tail + 1U) % KB_EVENT_QUEUE_CAP;
     return 0;
 }
 
