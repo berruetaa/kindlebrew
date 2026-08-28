@@ -86,6 +86,13 @@ typedef struct {
     uint64_t last_tap_ms;
     int last_tap_x;
     int last_tap_y;
+
+    struct sigaction old_sigint;
+    struct sigaction old_sigterm;
+    struct sigaction old_sighup;
+    bool sigint_installed;
+    bool sigterm_installed;
+    bool sighup_installed;
 } KBKindle;
 
 static volatile sig_atomic_t kb_signal_quit = 0;
@@ -93,6 +100,32 @@ static volatile sig_atomic_t kb_signal_quit = 0;
 static void kb_signal_handler(int signo) {
     (void)signo;
     kb_signal_quit = 1;
+}
+
+static void install_signal_handlers(KBKindle *k) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = kb_signal_handler;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGINT, &sa, &k->old_sigint) == 0) k->sigint_installed = true;
+    if (sigaction(SIGTERM, &sa, &k->old_sigterm) == 0) k->sigterm_installed = true;
+    if (sigaction(SIGHUP, &sa, &k->old_sighup) == 0) k->sighup_installed = true;
+}
+
+static void restore_signal_handlers(KBKindle *k) {
+    if (k->sigint_installed) (void)sigaction(SIGINT, &k->old_sigint, NULL);
+    if (k->sigterm_installed) (void)sigaction(SIGTERM, &k->old_sigterm, NULL);
+    if (k->sighup_installed) (void)sigaction(SIGHUP, &k->old_sighup, NULL);
+    k->sigint_installed = k->sigterm_installed = k->sighup_installed = false;
+}
+
+static void harden_input_fd(int fd) {
+    if (fd < 0) return;
+    int fdflags = fcntl(fd, F_GETFD, 0);
+    if (fdflags >= 0) (void)fcntl(fd, F_SETFD, fdflags | FD_CLOEXEC);
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags >= 0) (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 static int run_quiet_argv(const char *file, char *const argv[]) {
@@ -708,7 +741,7 @@ static int setup_input(KBGame *game) {
         KBInputDev *d = &k->input[k->input_count++];
         memset(d, 0, sizeof(*d));
         d->fd = scan[i].fd;
-        (void)fcntl(d->fd, F_SETFD, FD_CLOEXEC);
+        harden_input_fd(d->fd);
         d->type = scan[i].type;
         d->slot = 0;
 
@@ -1059,9 +1092,8 @@ static int kindle_init(KBGame *game) {
         }
     }
 
-    signal(SIGINT, kb_signal_handler);
-    signal(SIGTERM, kb_signal_handler);
-    signal(SIGHUP, kb_signal_handler);
+    kb_signal_quit = 0;
+    install_signal_handlers(k);
     return 0;
 }
 
@@ -1069,6 +1101,7 @@ static void kindle_shutdown(KBGame *game) {
     KBKindle *k = game ? (KBKindle *)game->backend : NULL;
     if (!k) return;
 
+    restore_signal_handlers(k);
     teardown_power_events(k);
     teardown_input(k);
 
