@@ -188,6 +188,32 @@ static void test_event_queue_pressure(void) {
         if (out.type == KB_EVENT_SUSPEND) saw_suspend = true;
     }
     assert(saw_suspend);
+
+    /*
+     * Regression: if the oldest event is critical but later entries are taps,
+     * a new critical event must evict a tap, not the older lifecycle event.
+     */
+    KBEvent drain;
+    while (kb_event_pop(g, &drain)) {}
+    memset(&suspend_ev, 0, sizeof(suspend_ev));
+    suspend_ev.type = KB_EVENT_SUSPEND;
+    assert(kb_event_push(g, &suspend_ev) == 0);
+    for (int i = 1; i < KB_EVENT_QUEUE_CAP - 1; ++i) {
+        tap.id = i;
+        assert(kb_event_push(g, &tap) == 0);
+    }
+    KBEvent quit_ev;
+    memset(&quit_ev, 0, sizeof(quit_ev));
+    quit_ev.type = KB_EVENT_QUIT;
+    assert(kb_event_push(g, &quit_ev) == 0);
+
+    bool kept_suspend = false;
+    bool saw_quit = false;
+    while (kb_event_pop(g, &out)) {
+        if (out.type == KB_EVENT_SUSPEND) kept_suspend = true;
+        if (out.type == KB_EVENT_QUIT) saw_quit = true;
+    }
+    assert(kept_suspend && saw_quit);
     kb_destroy(g);
 }
 
@@ -256,6 +282,43 @@ static void test_runtime_services(void) {
     kb_destroy(b);
 }
 
+static int fail_present(KBGame *game, const KBRect *rects, int count,
+                        KBRefreshMode mode, bool flashing) {
+    (void)game;
+    (void)rects;
+    (void)count;
+    (void)mode;
+    (void)flashing;
+    return -1;
+}
+
+static const KBBackendOps failing_present_ops = {
+    .init = NULL,
+    .shutdown = NULL,
+    .present = fail_present,
+    .poll_event = NULL,
+};
+
+static void test_present_failure_rolls_back_waveform_state(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 32;
+    cfg.height = 32;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    kb_damage_reset(g);
+    kb_damage_mono(g, (KBRect){0,0,8,8}, true);
+    g->refresh.a2_active = false;
+    g->ops = &failing_present_ops;
+
+    assert(kb_present(g, KB_REFRESH_FAST_MONO) == -1);
+    assert(!g->refresh.a2_active);
+    assert(g->damage.count > 0); /* failed present must remain retryable */
+
+    kb_destroy(g);
+}
+
 static void test_refresh_policy(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -311,6 +374,7 @@ int main(void) {
     test_event_queue_pressure();
     test_long_suspend_timer_catchup();
     test_runtime_services();
+    test_present_failure_rolls_back_waveform_state();
     test_refresh_policy();
     puts("kbgame: all host tests passed");
     return 0;
