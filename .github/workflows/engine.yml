@@ -110,6 +110,8 @@ jobs:
           cp package-src/inklab/install.sh build/inklab-kpkg/install.sh
           cp package-src/inklab/launch.sh build/inklab-kpkg/launch.sh
           cp package-src/inklab/uninstall.sh build/inklab-kpkg/uninstall.sh
+          cp package-src/inklab/LICENSE build/inklab-kpkg/LICENSE
+          cp package-src/inklab/SOURCE.txt build/inklab-kpkg/SOURCE.txt
           cp engine/build/kindle/inklab build/inklab-kpkg/payload/inklab
           chmod 755 build/inklab-kpkg/install.sh build/inklab-kpkg/launch.sh build/inklab-kpkg/uninstall.sh build/inklab-kpkg/payload/inklab
 
@@ -132,7 +134,7 @@ jobs:
           p='packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg'
           with tarfile.open(p, 'r:gz') as t:
               names=set(t.getnames())
-              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','payload/inklab'):
+              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','LICENSE','SOURCE.txt','payload/inklab'):
                   assert required in names, (required, names)
               m=json.load(t.extractfile('manifest.json'))
           assert m['manifest_version'] == 2
@@ -154,6 +156,8 @@ jobs:
           cp package-src/ink2048/install.sh build/ink2048-kpkg/install.sh
           cp package-src/ink2048/launch.sh build/ink2048-kpkg/launch.sh
           cp package-src/ink2048/uninstall.sh build/ink2048-kpkg/uninstall.sh
+          cp package-src/ink2048/LICENSE build/ink2048-kpkg/LICENSE
+          cp package-src/ink2048/SOURCE.txt build/ink2048-kpkg/SOURCE.txt
           cp games/ink2048/build/kindle/ink2048 build/ink2048-kpkg/payload/ink2048
           chmod 755 build/ink2048-kpkg/install.sh build/ink2048-kpkg/launch.sh build/ink2048-kpkg/uninstall.sh build/ink2048-kpkg/payload/ink2048
 
@@ -176,7 +180,7 @@ jobs:
           p='packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg'
           with tarfile.open(p, 'r:gz') as t:
               names=set(t.getnames())
-              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','payload/ink2048'):
+              for required in ('manifest.json','install.sh','launch.sh','uninstall.sh','LICENSE','SOURCE.txt','payload/ink2048'):
                   assert required in names, (required, names)
               m=json.load(t.extractfile('manifest.json'))
           assert m['manifest_version'] == 2
