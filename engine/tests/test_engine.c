@@ -167,6 +167,36 @@ static void test_event_queue_pressure(void) {
     kb_destroy(g);
 }
 
+static void test_long_suspend_timer_catchup(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 8;
+    cfg.height = 8;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    assert(kb_timer_start(g, 77, 1, 1) == 0);
+
+    KBTimer *timer = NULL;
+    for (int i = 0; i < KB_MAX_TIMERS; ++i) {
+        if (g->timers[i].active && g->timers[i].id == 77) {
+            timer = &g->timers[i];
+            break;
+        }
+    }
+    assert(timer);
+
+    timer->due_ms = 1000;
+    KBEvent ev;
+    uint64_t simulated_wake = UINT64_C(86400000) + 1000; /* 24 hours late */
+    assert(kb_timer_pop_due(g, &ev, simulated_wake) == 1);
+    assert(ev.type == KB_EVENT_TIMER && ev.id == 77);
+    assert(timer->due_ms > simulated_wake);
+    assert(timer->due_ms == simulated_wake + 1);
+
+    kb_destroy(g);
+}
+
 static void test_runtime_services(void) {
     KBConfig cfg;
     kb_config_defaults(&cfg);
@@ -254,6 +284,7 @@ int main(void) {
     test_canvas();
     test_text();
     test_event_queue_pressure();
+    test_long_suspend_timer_catchup();
     test_runtime_services();
     test_refresh_policy();
     puts("kbgame: all host tests passed");
