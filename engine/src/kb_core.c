@@ -205,6 +205,48 @@ void kb_damage_add(KBGame *game, KBRect rect, bool monochrome) {
     game->damage.area = kb_rect_area(all);
 }
 
+int kb_damage_compact(const KBRect *src, int count, KBRect *dst, int max_rects) {
+    if (!src || !dst || count <= 0 || max_rects <= 0) return 0;
+    if (count > KB_MAX_DIRTY_RECTS) count = KB_MAX_DIRTY_RECTS;
+
+    for (int i = 0; i < count; ++i) dst[i] = src[i];
+    int n = count;
+
+    while (n > max_rects) {
+        int best_i = -1;
+        int best_j = -1;
+        uint64_t best_cost = UINT64_MAX;
+
+        for (int i = 0; i < n; ++i) {
+            for (int j = i + 1; j < n; ++j) {
+                KBRect u = kb_rect_union(dst[i], dst[j]);
+                uint64_t ua = kb_rect_area(u);
+                uint64_t sum = kb_rect_area(dst[i]) + kb_rect_area(dst[j]);
+                uint64_t inflation = ua > sum ? ua - sum : 0;
+
+                /*
+                 * Prefer already-near rectangles even when raw inflation ties.
+                 * The one-bit penalty keeps the metric deterministic without
+                 * introducing floating point into a hot path.
+                 */
+                uint64_t cost = inflation * 2ULL +
+                                (kb_rect_near(dst[i], dst[j], 4) ? 0ULL : 1ULL);
+                if (cost < best_cost) {
+                    best_cost = cost;
+                    best_i = i;
+                    best_j = j;
+                }
+            }
+        }
+
+        if (best_i < 0 || best_j < 0) break;
+        dst[best_i] = kb_rect_union(dst[best_i], dst[best_j]);
+        dst[best_j] = dst[n - 1];
+        --n;
+    }
+    return n;
+}
+
 KBRect kb_damage_bounds(const KBGame *game) {
     if (!game || game->damage.count == 0) return (KBRect){0,0,0,0};
     KBRect all = game->damage.rects[0];
@@ -454,15 +496,14 @@ int kb_present(KBGame *game, KBRefreshMode requested) {
     KBRect full = {0,0,game->canvas.width,game->canvas.height};
     const KBRect *rects = game->damage.rects;
     int count = game->damage.count;
-    KBRect collapsed;
+    KBRect compacted[KB_MAX_DIRTY_RECTS];
 
     if (flashing || count == 0) {
         rects = &full;
         count = 1;
     } else if (count > 4) {
-        collapsed = kb_damage_bounds(game);
-        rects = &collapsed;
-        count = 1;
+        count = kb_damage_compact(game->damage.rects, count, compacted, 4);
+        rects = compacted;
     }
 
     uint64_t refreshed = 0;
