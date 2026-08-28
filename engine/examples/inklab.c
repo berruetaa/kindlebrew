@@ -24,8 +24,11 @@ static void draw_home(KBGame *g) {
     kb_fill_rect(g, (KBRect){gap*2+bw,by,bw,bh}, 128);
     kb_draw_rect(g, (KBRect){gap*3+bw*2,by,bw,bh}, 5, 0);
 
+    kb_draw_text8(g, 24, 24, "KINDLEBREW INKLAB", 2, 0, -1);
+    kb_draw_text8(g, 24, 48, "DRAG=A2  TAP=GRAY  SWIPE=CLEAN", 1, 0, -1);
+
     /* Crosshair makes rotation/scaling mistakes obvious. */
-    kb_draw_line(g, w/2, 20, w/2, h/3, 2, 0);
+    kb_draw_line(g, w/2, 72, w/2, h/3, 2, 0);
     kb_draw_line(g, w/2-w/10, h/6, w/2+w/10, h/6, 2, 0);
 }
 
