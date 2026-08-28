@@ -9,6 +9,14 @@
 
 static bool mono(uint8_t g) { return g == 0 || g == 255; }
 
+static void fill_rect_pixels(KBGame *game, KBRect rect, uint8_t gray) {
+    rect = kb_rect_clip(rect, game->canvas.width, game->canvas.height);
+    if (kb_rect_empty(rect)) return;
+    for (int y = rect.y; y < rect.y + rect.h; ++y) {
+        memset(game->canvas.pixels + (size_t)y * game->canvas.stride + rect.x, gray, (size_t)rect.w);
+    }
+}
+
 void kb_clear(KBGame *game, uint8_t gray) {
     if (!game || !game->canvas.pixels) return;
     for (int y = 0; y < game->canvas.height; ++y) {
@@ -21,9 +29,7 @@ void kb_fill_rect(KBGame *game, KBRect rect, uint8_t gray) {
     if (!game || !game->canvas.pixels) return;
     rect = kb_rect_clip(rect, game->canvas.width, game->canvas.height);
     if (kb_rect_empty(rect)) return;
-    for (int y = rect.y; y < rect.y + rect.h; ++y) {
-        memset(game->canvas.pixels + (size_t)y * game->canvas.stride + rect.x, gray, (size_t)rect.w);
-    }
+    fill_rect_pixels(game, rect, gray);
     kb_damage_add(game, rect, mono(gray));
 }
 
@@ -39,37 +45,46 @@ void kb_draw_rect(KBGame *game, KBRect rect, int thickness, uint8_t gray) {
     kb_fill_rect(game, (KBRect){rect.x + rect.w - thickness, rect.y + thickness, thickness, rect.h - thickness * 2}, gray);
 }
 
-static void plot_thick(KBGame *game, int x, int y, int thickness, uint8_t gray) {
+static void plot_thick_pixels(KBGame *game, int x, int y, int thickness, uint8_t gray) {
     int r = thickness > 1 ? thickness / 2 : 0;
-    kb_fill_rect(game, (KBRect){x-r,y-r,thickness > 0 ? thickness : 1,thickness > 0 ? thickness : 1}, gray);
+    fill_rect_pixels(game, (KBRect){x-r,y-r,thickness > 0 ? thickness : 1,thickness > 0 ? thickness : 1}, gray);
 }
 
 void kb_draw_line(KBGame *game, int x0, int y0, int x1, int y1, int thickness, uint8_t gray) {
-    if (!game) return;
+    if (!game || !game->canvas.pixels) return;
     if (thickness < 1) thickness = 1;
+
+    int ox0 = x0, oy0 = y0, ox1 = x1, oy1 = y1;
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
 
     for (;;) {
-        plot_thick(game, x0, y0, thickness, gray);
+        plot_thick_pixels(game, x0, y0, thickness, gray);
         if (x0 == x1 && y0 == y1) break;
         int e2 = err * 2;
         if (e2 >= dy) { err += dy; x0 += sx; }
         if (e2 <= dx) { err += dx; y0 += sy; }
     }
+
+    int r = thickness > 1 ? thickness / 2 : 0;
+    int minx = ox0 < ox1 ? ox0 : ox1;
+    int miny = oy0 < oy1 ? oy0 : oy1;
+    int maxx = ox0 > ox1 ? ox0 : ox1;
+    int maxy = oy0 > oy1 ? oy0 : oy1;
+    kb_damage_add(game, (KBRect){minx-r, miny-r, maxx-minx+1+thickness, maxy-miny+1+thickness}, mono(gray));
 }
 
 void kb_fill_circle(KBGame *game, int cx, int cy, int radius, uint8_t gray) {
-    if (!game || radius < 0) return;
+    if (!game || !game->canvas.pixels || radius < 0) return;
     int x = radius;
     int y = 0;
     int err = 1 - x;
     while (x >= y) {
-        kb_fill_rect(game, (KBRect){cx-x, cy+y, x*2+1, 1}, gray);
-        kb_fill_rect(game, (KBRect){cx-x, cy-y, x*2+1, 1}, gray);
-        kb_fill_rect(game, (KBRect){cx-y, cy+x, y*2+1, 1}, gray);
-        kb_fill_rect(game, (KBRect){cx-y, cy-x, y*2+1, 1}, gray);
+        fill_rect_pixels(game, (KBRect){cx-x, cy+y, x*2+1, 1}, gray);
+        fill_rect_pixels(game, (KBRect){cx-x, cy-y, x*2+1, 1}, gray);
+        fill_rect_pixels(game, (KBRect){cx-y, cy+x, y*2+1, 1}, gray);
+        fill_rect_pixels(game, (KBRect){cx-y, cy-x, y*2+1, 1}, gray);
         ++y;
         if (err < 0) {
             err += 2*y + 1;
@@ -78,6 +93,7 @@ void kb_fill_circle(KBGame *game, int cx, int cy, int radius, uint8_t gray) {
             err += 2*(y-x) + 1;
         }
     }
+    kb_damage_add(game, (KBRect){cx-radius,cy-radius,radius*2+1,radius*2+1}, mono(gray));
 }
 
 void kb_blit_gray8(KBGame *game, int x, int y, const uint8_t *src, int width, int height, int src_stride) {
