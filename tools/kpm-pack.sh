@@ -61,6 +61,10 @@ with tarfile.open(path, "r:gz") as archive:
         assert member.name not in ("rootfs", "startup.sh"), (
             f"reserved KPM package path: {member.name}"
         )
+        if member.issym() or member.islnk():
+            target = pathlib.PurePosixPath(member.linkname)
+            assert not target.is_absolute(), f"absolute link target: {member.name} -> {member.linkname}"
+            assert ".." not in target.parts, f"escaping link target: {member.name} -> {member.linkname}"
 
     manifest = json.load(archive.extractfile("manifest.json"))
     assert manifest["manifest_version"] == 2, manifest
@@ -78,5 +82,20 @@ if ! command -v bsdtar >/dev/null 2>&1; then
 fi
 bsdtar -tf "$out" >/dev/null
 
-echo "libarchive read OK: $out"
+extract_dir="$(mktemp -d)"
+trap 'rm -rf "$extract_dir"' EXIT INT TERM
+bsdtar -xf "$out" -C "$extract_dir"
+test -f "$extract_dir/manifest.json"
+for script in install.sh launch.sh uninstall.sh; do
+    if [ -f "$extract_dir/$script" ]; then
+        if grep -q "$(printf '\r')" "$extract_dir/$script"; then
+            echo "CRLF/CR detected in $script; refusing Kindle package" >&2
+            exit 4
+        fi
+    fi
+done
+rm -rf "$extract_dir"
+trap - EXIT INT TERM
+
+echo "libarchive list+extract OK: $out"
 sha256sum "$out"
