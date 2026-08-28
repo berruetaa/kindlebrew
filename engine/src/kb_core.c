@@ -165,6 +165,39 @@ static void kb_damage_recount(KBGame *game) {
     game->damage.area = area;
 }
 
+static uint64_t kb_damage_merge_cost(KBRect a, KBRect b) {
+    KBRect u = kb_rect_union(a, b);
+    uint64_t ua = kb_rect_area(u);
+    uint64_t sum = kb_rect_area(a) + kb_rect_area(b);
+    uint64_t inflation = ua > sum ? ua - sum : 0;
+    uint64_t near_penalty = kb_rect_near(a, b, 4) ? 0U : 1U;
+    if (inflation > (UINT64_MAX - near_penalty) / 2U) return UINT64_MAX;
+    return inflation * 2U + near_penalty;
+}
+
+static int kb_damage_merge_cheapest(KBRect *rects, int count) {
+    if (!rects || count < 2) return count;
+
+    int best_i = 0;
+    int best_j = 1;
+    uint64_t best_cost = kb_damage_merge_cost(rects[0], rects[1]);
+
+    for (int i = 0; i < count; ++i) {
+        for (int j = i + 1; j < count; ++j) {
+            uint64_t cost = kb_damage_merge_cost(rects[i], rects[j]);
+            if (cost < best_cost) {
+                best_cost = cost;
+                best_i = i;
+                best_j = j;
+            }
+        }
+    }
+
+    rects[best_i] = kb_rect_union(rects[best_i], rects[best_j]);
+    rects[best_j] = rects[count - 1];
+    return count - 1;
+}
+
 void kb_damage_add(KBGame *game, KBRect rect, bool monochrome) {
     if (!game) return;
     rect = kb_rect_clip(rect, game->canvas.width, game->canvas.height);
@@ -197,12 +230,18 @@ void kb_damage_add(KBGame *game, KBRect rect, bool monochrome) {
         return;
     }
 
-    /* Too fragmented: a single larger EPDC update is cheaper than a storm of tiny ioctls. */
-    KBRect all = rect;
-    for (int i = 0; i < game->damage.count; ++i) all = kb_rect_union(all, game->damage.rects[i]);
-    game->damage.rects[0] = all;
-    game->damage.count = 1;
-    game->damage.area = kb_rect_area(all);
+    /*
+     * The accumulator is full. Keep the new damage, then merge only the
+     * cheapest pair back down to capacity. Collapsing everything to one
+     * bounding box here would defeat the smarter compaction done at present.
+     */
+    KBRect work[KB_MAX_DIRTY_RECTS + 1];
+    for (int i = 0; i < game->damage.count; ++i) work[i] = game->damage.rects[i];
+    work[game->damage.count] = rect;
+    int count = kb_damage_merge_cheapest(work, game->damage.count + 1);
+    for (int i = 0; i < count; ++i) game->damage.rects[i] = work[i];
+    game->damage.count = count;
+    kb_damage_recount(game);
 }
 
 int kb_damage_compact(const KBRect *src, int count, KBRect *dst, int max_rects) {
@@ -219,18 +258,12 @@ int kb_damage_compact(const KBRect *src, int count, KBRect *dst, int max_rects) 
 
         for (int i = 0; i < n; ++i) {
             for (int j = i + 1; j < n; ++j) {
-                KBRect u = kb_rect_union(dst[i], dst[j]);
-                uint64_t ua = kb_rect_area(u);
-                uint64_t sum = kb_rect_area(dst[i]) + kb_rect_area(dst[j]);
-                uint64_t inflation = ua > sum ? ua - sum : 0;
-
                 /*
                  * Prefer already-near rectangles even when raw inflation ties.
                  * The one-bit penalty keeps the metric deterministic without
                  * introducing floating point into a hot path.
                  */
-                uint64_t cost = inflation * 2ULL +
-                                (kb_rect_near(dst[i], dst[j], 4) ? 0ULL : 1ULL);
+                uint64_t cost = kb_damage_merge_cost(dst[i], dst[j]);
                 if (cost < best_cost) {
                     best_cost = cost;
                     best_i = i;
