@@ -74,7 +74,7 @@ typedef struct {
     int value;
     int width;
     int height;
-    int orientation;          /* degrees clockwise: 0, 90, 180, 270 */
+    int orientation;          /* degrees clockwise; -1 when a Kindle gyro code is ambiguous */
     int source;               /* backend-specific source value, 0 if unknown */
     uint64_t duration_ms;     /* suspend duration when known */
 } KBEvent;
@@ -88,6 +88,7 @@ typedef struct {
     bool grab_touch;
     bool keep_awake;
     bool restore_ui_on_exit;
+    bool low_latency_mode;      /* enables safe device-specific latency optimizations */
     bool auto_clean;
     unsigned partial_refresh_limit;
     unsigned clean_interval_ms;
@@ -115,6 +116,7 @@ typedef struct {
     bool has_color_panel;
     bool can_wait_for_submission;
     bool direct_framebuffer_y8;
+    bool mtk_fast_mode_active;
     bool touch_grab_active;
     int input_devices;
     char fbink_version[32];
