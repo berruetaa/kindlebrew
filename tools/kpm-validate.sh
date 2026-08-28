@@ -66,16 +66,17 @@ print(f"python tar validation OK: {path}")
 PY
 
 # Second parser: libarchive. KPM 0.2.2 itself embeds libarchive 3.8.1.
-if ! command -v bsdtar >/dev/null 2>&1; then
-    echo "bsdtar is required: install libarchive-tools" >&2
+BSDTAR_BIN="${BSDTAR:-bsdtar}"
+if ! command -v "$BSDTAR_BIN" >/dev/null 2>&1 && [ ! -x "$BSDTAR_BIN" ]; then
+    echo "bsdtar is required: install libarchive-tools or set BSDTAR" >&2
     exit 3
 fi
 
-bsdtar -tf "$pkg" >/dev/null
+"$BSDTAR_BIN" -tf "$pkg" >/dev/null
 
 extract_dir="$(mktemp -d)"
 trap 'rm -rf "$extract_dir"' EXIT INT TERM
-bsdtar -xf "$pkg" -C "$extract_dir"
+"$BSDTAR_BIN" -xf "$pkg" -C "$extract_dir"
 test -f "$extract_dir/manifest.json"
 
 # KPM executes lifecycle hooks with sh. CRLF is needless ambiguity on the
@@ -90,4 +91,4 @@ done
 rm -rf "$extract_dir"
 trap - EXIT INT TERM
 
-echo "libarchive list+extract OK: $pkg"
+echo "libarchive list+extract OK ($("$BSDTAR_BIN" --version | head -n 1)): $pkg"
