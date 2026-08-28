@@ -316,6 +316,7 @@ KBGame *kb_create(const KBConfig *config) {
     if (!game) return NULL;
 
     game->config = kb_default_config();
+    kb_rng_seed(game, 0);
     if (config) {
         KBConfig in = *config;
         if (!in.partial_refresh_limit) in.partial_refresh_limit = game->config.partial_refresh_limit;
@@ -427,6 +428,18 @@ int kb_force_clean(KBGame *game) {
 int kb_poll_event(KBGame *game, KBEvent *event, int timeout_ms) {
     if (!game || !event) return -1;
     if (kb_event_pop(game, event)) return 1;
+
+    uint64_t now = kb_now_ms();
+    if (kb_timer_pop_due(game, event, now)) return 1;
+
     if (!game->ops || !game->ops->poll_event) return 0;
-    return game->ops->poll_event(game, event, timeout_ms);
+
+    int effective_timeout = kb_timer_timeout(game, timeout_ms, now);
+    int rc = game->ops->poll_event(game, event, effective_timeout);
+    if (rc != 0) return rc;
+
+    now = kb_now_ms();
+    if (kb_event_pop(game, event)) return 1;
+    if (kb_timer_pop_due(game, event, now)) return 1;
+    return 0;
 }
