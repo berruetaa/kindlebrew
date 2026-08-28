@@ -1,0 +1,16 @@
+{
+  "manifest_version": 2,
+  "id": "ink2048",
+  "name": "Ink 2048",
+  "author": "Kindlebrew",
+  "description": "E-ink native 2048 built on Kindlebrew Game Engine, with fast interactive updates and grayscale settling.",
+  "version": [
+    1,
+    0,
+    0
+  ],
+  "dependencies": [],
+  "supported_platforms": [
+    "kindlehf"
+  ]
+}
