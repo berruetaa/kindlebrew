@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 
+if [ "${1:-}" = "upgrade" ]; then
+  echo "ink2048: preserving installed state for KPM upgrade."
+  exit 0
+fi
+
+
 if [ -f "library-install.sh" ]; then
   sh "library-install.sh" uninstall
 else
