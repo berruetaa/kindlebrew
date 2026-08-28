@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           prefix=arm-kindlehf-linux-gnueabihf-
           make -C engine/vendor/FBInk clean
-          make -C engine/vendor/FBInk staticlib staticinputlib \
+          make -C engine/vendor/FBInk staticlib \
             KINDLE=true MINIMAL=true DRAW=true INPUT=true \
             CROSS_TC=arm-kindlehf-linux-gnueabihf \
             CC="${prefix}gcc" AR="${prefix}ar" RANLIB="${prefix}ranlib" STRIP="${prefix}strip"
