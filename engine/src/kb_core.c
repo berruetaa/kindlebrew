@@ -415,11 +415,29 @@ int kb_event_push(KBGame *game, const KBEvent *event) {
         }
 
         /*
-         * Prefer sacrificing stale motion/key-repeat noise. If the queue is
-         * composed entirely of meaningful events, a non-critical incoming
-         * event is rejected rather than displacing suspend/resume/quit.
+         * Prefer stale motion/key-repeat noise. If the incoming event is not
+         * critical, reject it rather than evicting meaningful work. For a
+         * critical lifecycle event, evict the oldest non-critical event next;
+         * only an all-critical queue is allowed to sacrifice lifecycle state.
          */
         if (drop < 0 && !kb_event_critical(event->type)) return 1;
+        if (drop < 0) {
+            for (unsigned i = 0; i < count; ++i) {
+                if (!kb_event_critical(compact[i].type)) {
+                    drop = (int)i;
+                    break;
+                }
+            }
+        }
+        if (drop < 0) {
+            /* Prefer replacing an older duplicate of the same critical type. */
+            for (unsigned i = 0; i < count; ++i) {
+                if (compact[i].type == event->type) {
+                    drop = (int)i;
+                    break;
+                }
+            }
+        }
         if (drop < 0) drop = 0;
 
         game->event_head = 0;
