@@ -470,15 +470,15 @@ static void drain_power_events(KBGame *game) {
     }
 }
 
-static int absinfo_for(int fd, int primary, int fallback,
-                       struct input_absinfo *out) {
+static unsigned int absinfo_for(int fd, unsigned int primary, unsigned int fallback,
+                                struct input_absinfo *out) {
     if (ioctl(fd, EVIOCGABS(primary), out) == 0 && out->maximum > out->minimum) return primary;
     memset(out, 0, sizeof(*out));
     if (ioctl(fd, EVIOCGABS(fallback), out) == 0 && out->maximum > out->minimum) return fallback;
     memset(out, 0, sizeof(*out));
     out->minimum = 0;
     out->maximum = 4095;
-    return -1;
+    return UINT_MAX;
 }
 
 static int norm_axis(int raw, const struct input_absinfo *a) {
@@ -794,8 +794,8 @@ static int setup_input(KBGame *game) {
 
         bool touch = (d->type & (INPUT_TOUCHSCREEN | INPUT_SCALED_TABLET | INPUT_TABLET)) != 0;
         if (touch) {
-            int xcode = absinfo_for(d->fd, ABS_MT_POSITION_X, ABS_X, &d->xinfo);
-            int ycode = absinfo_for(d->fd, ABS_MT_POSITION_Y, ABS_Y, &d->yinfo);
+            unsigned int xcode = absinfo_for(d->fd, ABS_MT_POSITION_X, ABS_X, &d->xinfo);
+            unsigned int ycode = absinfo_for(d->fd, ABS_MT_POSITION_Y, ABS_Y, &d->yinfo);
             d->has_mt = xcode == ABS_MT_POSITION_X && ycode == ABS_MT_POSITION_Y;
             d->has_abs = true;
             if (game->config.grab_touch) {
