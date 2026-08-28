@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pack KPM v2 artifacts with the exact upstream helper that KPM documents.
+# Pack KPM v2 artifacts with the exact upstream helper shipped by Vera/jb.sh (KPM 0.2.2).
 # This deliberately avoids GNU tar/gzip: a previous Kindlebrew build produced
 # KPM error 8 (KPM_LIBARCHIVE_ERROR) even though the archive looked valid on
 # the build host.
-KPM_HELPER_COMMIT="ffa767fffadd731bd59f2bca8c83231f4fc0ab2d"
+KPM_HELPER_COMMIT="799adf431223d2cfa782a6a4ad07d809f120100b"
 KPM_HELPER_URL="https://raw.githubusercontent.com/KindleModding/KPM/${KPM_HELPER_COMMIT}/kpm-helper.py"
 
 if [ "$#" -ne 2 ]; then
