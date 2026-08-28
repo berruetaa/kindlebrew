@@ -16,15 +16,17 @@ typedef enum {
 } G2048Direction;
 
 typedef struct {
-    uint16_t cells[16];
-    uint16_t undo_cells[16];
+    uint32_t cells[16];
+    uint32_t undo_cells[16];
     uint64_t score;
     uint64_t best;
     uint64_t undo_score;
     uint64_t rng;
+    uint64_t undo_rng;
     bool undo_valid;
     bool won;
     bool game_over;
+    uint16_t changed_mask;
     int last_spawn;
 } G2048;
 
