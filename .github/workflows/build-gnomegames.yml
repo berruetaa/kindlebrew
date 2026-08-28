@@ -8,6 +8,7 @@ on:
       - 'package-src/chess/**'
       - 'package-src/mines/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
       - '.github/workflows/build-gnomegames.yml'
 
 permissions:
