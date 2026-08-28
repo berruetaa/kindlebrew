@@ -42,9 +42,15 @@ int main(void) {
     }
 
     const KBDeviceInfo *d = kb_device_info(g);
-    fprintf(stderr, "InkLab: %s (%s) %dx%d %ddpi bpp=%d mtk=%d\n",
+    fprintf(stderr, "InkLab: %s (%s) %dx%d %ddpi bpp=%d mtk=%d direct_y8=%d\n",
             d->device_name, d->device_codename, d->width, d->height,
-            d->dpi, d->bpp, d->is_mtk ? 1 : 0);
+            d->dpi, d->bpp, d->is_mtk ? 1 : 0, d->direct_framebuffer_y8 ? 1 : 0);
+
+#ifdef KB_KINDLE
+    (void)kb_write_diagnostics(g, "/mnt/us/documents/Kindlebrew-InkLab-diagnostics.txt");
+#else
+    (void)kb_write_diagnostics(g, "build/inklab-diagnostics.txt");
+#endif
 
     draw_home(g);
     if (kb_present(g, KB_REFRESH_CLEAN) != 0) {
@@ -111,6 +117,11 @@ int main(void) {
         }
     }
 
+#ifdef KB_KINDLE
+    (void)kb_write_diagnostics(g, "/mnt/us/documents/Kindlebrew-InkLab-diagnostics.txt");
+#else
+    (void)kb_write_diagnostics(g, "build/inklab-diagnostics.txt");
+#endif
     kb_destroy(g);
     return 0;
 }
