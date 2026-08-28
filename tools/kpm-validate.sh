@@ -82,9 +82,15 @@ test -f "$extract_dir/manifest.json"
 # KPM executes lifecycle hooks with sh. CRLF is needless ambiguity on the
 # Kindle BusyBox shell and is rejected at release time.
 for script in install.sh launch.sh uninstall.sh; do
-    if [ -f "$extract_dir/$script" ] && grep -q "$(printf '\r')" "$extract_dir/$script"; then
-        echo "CRLF/CR detected in $script; refusing Kindle package" >&2
-        exit 4
+    if [ -f "$extract_dir/$script" ]; then
+        if grep -q "$(printf '\r')" "$extract_dir/$script"; then
+            echo "CRLF/CR detected in $script; refusing Kindle package" >&2
+            exit 4
+        fi
+        if ! sh -n "$extract_dir/$script"; then
+            echo "POSIX sh syntax validation failed for $script" >&2
+            exit 5
+        fi
     fi
 done
 
