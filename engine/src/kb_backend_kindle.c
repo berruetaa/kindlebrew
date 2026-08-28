@@ -470,7 +470,8 @@ static void drain_power_events(KBGame *game) {
     }
 }
 
-static int absinfo_for(int fd, int primary, int fallback, struct input_absinfo *out) {
+static int absinfo_for(int fd, unsigned int primary, unsigned int fallback,
+                       struct input_absinfo *out) {
     if (ioctl(fd, EVIOCGABS(primary), out) == 0 && out->maximum > out->minimum) return primary;
     memset(out, 0, sizeof(*out));
     if (ioctl(fd, EVIOCGABS(fallback), out) == 0 && out->maximum > out->minimum) return fallback;
@@ -868,8 +869,10 @@ static int copy_rect_direct_y8(KBGame *game, const KBRect *r) {
     KBKindle *k = (KBKindle *)game->backend;
     if (!k->fb || !k->direct_y8) return -1;
     for (int row = 0; row < r->h; ++row) {
-        size_t dst_off = (size_t)(r->y + row) * k->fb_state.scanline_stride + (size_t)r->x;
-        size_t src_off = (size_t)(r->y + row) * game->canvas.stride + (size_t)r->x;
+        size_t dst_off = (size_t)(r->y + row) * (size_t)k->fb_state.scanline_stride +
+                         (size_t)r->x;
+        size_t src_off = (size_t)(r->y + row) * (size_t)game->canvas.stride +
+                         (size_t)r->x;
         if (dst_off + (size_t)r->w > k->fb_size) return -1;
         memcpy(k->fb + dst_off, game->canvas.pixels + src_off, (size_t)r->w);
     }
@@ -886,9 +889,10 @@ static int copy_rect_via_fbink(KBGame *game, const KBRect *r) {
     }
 
     for (int row = 0; row < r->h; ++row) {
-        memcpy(tmp + (size_t)row * r->w,
-               game->canvas.pixels + (size_t)(r->y + row) * game->canvas.stride + r->x,
-               (size_t)r->w);
+        size_t tmp_off = (size_t)row * (size_t)r->w;
+        size_t src_off = (size_t)(r->y + row) * (size_t)game->canvas.stride +
+                         (size_t)r->x;
+        memcpy(tmp + tmp_off, game->canvas.pixels + src_off, (size_t)r->w);
     }
 
     FBInkConfig draw = k->fb_cfg;
