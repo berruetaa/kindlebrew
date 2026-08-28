@@ -10,7 +10,8 @@
 #include <stdint.h>
 
 #define KB_MAX_DIRTY_RECTS 16
-#define KB_EVENT_QUEUE_CAP 64
+#define KB_EVENT_QUEUE_CAP 128
+#define KB_MAX_TIMERS 32
 
 typedef struct {
     KBRect rects[KB_MAX_DIRTY_RECTS];
@@ -25,6 +26,13 @@ typedef struct {
     uint64_t last_clean_ms;
     bool a2_active;
 } KBRefreshPolicy;
+
+typedef struct {
+    int id;
+    uint64_t due_ms;
+    uint64_t repeat_ms;
+    bool active;
+} KBTimer;
 
 typedef struct {
     int (*init)(KBGame *game);
@@ -43,6 +51,8 @@ struct KBGame {
     KBEvent events[KB_EVENT_QUEUE_CAP];
     unsigned event_head;
     unsigned event_tail;
+    KBTimer timers[KB_MAX_TIMERS];
+    uint64_t rng_state;
     char error[256];
     void *backend;
     const KBBackendOps *ops;
@@ -63,6 +73,8 @@ void kb_policy_reset(KBGame *game, uint64_t now_ms);
 
 int kb_event_push(KBGame *game, const KBEvent *event);
 int kb_event_pop(KBGame *game, KBEvent *event);
+int kb_timer_pop_due(KBGame *game, KBEvent *event, uint64_t now_ms);
+int kb_timer_timeout(const KBGame *game, int requested_timeout_ms, uint64_t now_ms);
 
 extern const KBBackendOps kb_backend_headless_ops;
 #ifdef KB_KINDLE
