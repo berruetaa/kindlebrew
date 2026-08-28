@@ -56,9 +56,12 @@ jobs:
               # Reading archives for validation is fine. Writing .kpkg files
               # anywhere except tools/kpm-pack.sh is not.
               bad_patterns = [
-                  r'\btar\s+-[^\n]*[cz][^\n]*\.kpkg',
-                  r'\btar\s+--format=[^\n]*\.kpkg',
-                  r'tarfile\.open\([^\n]*["\'][^"\']*w[^"\']*["\']',
+                  # Short-option GNU tar commands are writers only when the
+                  # option cluster includes c (create). -tzf is read-only.
+                  r'\btar\s+-[A-Za-z]*c[A-Za-z]*[^\n]*(?:\.kpkg|\|\s*gzip)',
+                  r'\btar\s+[^\n]*--create[^\n]*(?:\.kpkg|\|\s*gzip)',
+                  r'\btar\s+[^\n]*--format=[^\n]*\|\s*gzip[^\n]*\.kpkg',
+                  r'tarfile\.open\([^\n]*["\'][^"\']*w(?::[^"\']*)?["\']',
               ]
               for pattern in bad_patterns:
                   if re.search(pattern, text):
