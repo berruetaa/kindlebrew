@@ -29,7 +29,7 @@ KINDLE_PREFIX ?= arm-kindlehf-linux-gnueabihf-
 KCC := $(KINDLE_PREFIX)gcc
 KSTRIP := $(KINDLE_PREFIX)strip
 FBINK_DIR ?= $(ENGINE_DIR)/vendor/FBInk
-KINDLE_CFLAGS := -Os -std=c11 -Wall -Wextra -Wshadow -ffunction-sections -fdata-sections
+KINDLE_CFLAGS := -Os $(COMMON_CFLAGS) -Werror -ffunction-sections -fdata-sections
 KINDLE_CPPFLAGS := $(COMMON_CPPFLAGS) -DKB_KINDLE -DFBINK_FOR_KINDLE -DFBINK_MINIMAL -DFBINK_WITH_DRAW -DFBINK_WITH_INPUT -I$(FBINK_DIR)
 KINDLE_LDFLAGS := -Wl,--gc-sections
 
