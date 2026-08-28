@@ -35,9 +35,19 @@ jobs:
           cp package-src/wordle/launch.sh build/wordle/launch.sh
           cp package-src/wordle/uninstall.sh build/wordle/uninstall.sh
           chmod 755 build/wordle/install.sh build/wordle/launch.sh build/wordle/uninstall.sh
-          tar --format=ustar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
-            -cf - -C build/wordle . \
-            | gzip -n > packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg
+          python - <<'PY'
+          import os
+          import tarfile
+
+          src = 'build/wordle'
+          out = 'packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg'
+
+          with tarfile.open(out, 'w:gz', compresslevel=5) as archive:
+              for name in sorted(os.listdir(src)):
+                  archive.add(os.path.join(src, name), arcname=name)
+
+          print('packed', out)
+          PY
 
       - name: Validate package
         shell: bash
