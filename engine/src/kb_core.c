@@ -523,6 +523,7 @@ int kb_present(KBGame *game, KBRefreshMode requested) {
 
     uint64_t now = kb_now_ms();
     uint64_t dirty = game->damage.area;
+    bool previous_a2_active = game->refresh.a2_active;
     KBRefreshMode actual = kb_policy_choose(game, requested, now, dirty);
     bool flashing = actual == KB_REFRESH_CLEAN;
 
@@ -542,7 +543,15 @@ int kb_present(KBGame *game, KBRefreshMode requested) {
     uint64_t refreshed = 0;
     for (int i = 0; i < count; ++i) refreshed += kb_rect_area(rects[i]);
 
-    if (game->ops->present(game, rects, count, actual, flashing) != 0) return -1;
+    if (game->ops->present(game, rects, count, actual, flashing) != 0) {
+        /*
+         * Waveform state is only real after the backend accepted the update.
+         * In particular, a failed GC16 conditioning frame must not make the
+         * next FAST_MONO request believe A2 is already safe.
+         */
+        game->refresh.a2_active = previous_a2_active;
+        return -1;
+    }
 
     game->stats.dirty_pixels += dirty;
     kb_policy_commit(game, actual, now, refreshed);
