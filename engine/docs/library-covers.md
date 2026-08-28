@@ -4,7 +4,7 @@ Kindlebrew games appear in the stock Kindle library through sh_integration Scrip
 
 ## Per-game cover convention
 
-A native game may define one optional cover asset beside its package source:
+A native game declares its stock-library metadata in `library.json` and may define one optional cover asset beside it:
 
 ~~~text
 package-src/my-game/
@@ -76,3 +76,20 @@ Do not write directly to `cc.db`. That duplicates sh_integration behavior and co
 ## Cover design recommendations
 
 Treat the asset as an e-ink thumbnail first: strong silhouette, high local contrast, minimal fine texture, and a design that survives grayscale. Use PNG or JPEG for the packaged asset. SVG may be useful as a design-time source, but Kindlebrew does not claim stock-library SVG thumbnail compatibility without device evidence.
+
+## Scriptlet filename stability
+
+`document_name` is part of the installed-library identity and should normally remain stable across releases. If a release intentionally renames it, declare every older managed name in `legacy_document_names`:
+
+~~~json
+{
+  "schema_version": 1,
+  "name": "My Game",
+  "author": "Me",
+  "document_name": "My-Game.sh",
+  "legacy_document_names": ["Old-My-Game.sh"],
+  "cover": "cover.png"
+}
+~~~
+
+The generated library helper removes those old Scriptlets and their `.sdr` metadata during both upgrade and uninstall. Names are validated as simple `.sh` filenames; paths and duplicates are rejected.
