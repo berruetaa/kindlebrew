@@ -114,8 +114,8 @@ def render_library_installer(
     legacy_cleanup = []
     for name in legacy_document_names:
         path = f"/mnt/us/documents/{name}"
-        legacy_cleanup.append(f'    rm -f "{path}"')
-        legacy_cleanup.append(f'    rm -rf "{path}.sdr"')
+        legacy_cleanup.append(f'    rm -f "{path}" 2>/dev/null || true')
+        legacy_cleanup.append(f'    rm -rf "{path}.sdr" 2>/dev/null || true')
     legacy_cleanup_text = "\n".join(legacy_cleanup) if legacy_cleanup else "    :"
 
     # Every interpolated value has already passed strict filename/id validation.
@@ -130,6 +130,13 @@ cleanup_legacy_docs() {{
 {legacy_cleanup_text}
 }}
 
+cleanup_staging() {{
+    rm -f "$DOC.kindlebrew-new.$$" 2>/dev/null || true
+    if [ -n "$COVER" ]; then
+        rm -f "$TARGET/$COVER.kindlebrew-new.$$" 2>/dev/null || true
+    fi
+}}
+
 install_library() {{
     if [ ! -f scriptlet.sh ]; then
         echo 'Kindlebrew library Scriptlet is missing.' >&2
@@ -141,23 +148,50 @@ install_library() {{
     fi
 
     mkdir -p "$TARGET" /mnt/us/documents
-    cleanup_legacy_docs
+    cleanup_staging
 
-    # Clear stale artwork first in case an upgrade changed format or dropped it.
-    rm -f "$TARGET/cover.png" "$TARGET/cover.jpg" "$TARGET/cover.jpeg"
+    doc_tmp="$DOC.kindlebrew-new.$$"
+    if ! cp scriptlet.sh "$doc_tmp"; then
+        cleanup_staging
+        exit 1
+    fi
+    chmod 755 "$doc_tmp" 2>/dev/null || true
+
+    # If a cover is added/replaced, make the final image path valid before the
+    # new Scriptlet can reference it. Old cover formats remain in place until
+    # after the document swap, so the previous Scriptlet remains valid too.
     if [ -n "$COVER" ]; then
-        cp "$COVER" "$TARGET/$COVER"
+        cover_tmp="$TARGET/$COVER.kindlebrew-new.$$"
+        if ! cp "$COVER" "$cover_tmp"; then
+            cleanup_staging
+            exit 1
+        fi
         # sh_integration validates path icons with access(R_OK|W_OK).
-        chmod 666 "$TARGET/$COVER" 2>/dev/null || true
+        chmod 666 "$cover_tmp" 2>/dev/null || true
+        if ! mv -f "$cover_tmp" "$TARGET/$COVER"; then
+            cleanup_staging
+            exit 1
+        fi
     fi
 
-    # Artwork must exist before the scanner sees the updated metadata.
-    cp scriptlet.sh "$DOC"
-    chmod 755 "$DOC" 2>/dev/null || true
-    touch "$DOC" 2>/dev/null || true
+    # Same-filesystem rename is the commit point for library metadata.
+    if ! mv -f "$doc_tmp" "$DOC"; then
+        cleanup_staging
+        exit 1
+    fi
+
+    # Everything below is post-commit hygiene and must not turn a successful
+    # visible update into a KPM install failure.
+    cleanup_legacy_docs
+    for stale in cover.png cover.jpg cover.jpeg; do
+        if [ "$stale" != "$COVER" ]; then
+            rm -f "$TARGET/$stale" 2>/dev/null || true
+        fi
+    done
 }}
 
 uninstall_library() {{
+    cleanup_staging
     cleanup_legacy_docs
     rm -f "$DOC"
     rm -rf "$DOC.sdr"
