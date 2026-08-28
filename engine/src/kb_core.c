@@ -10,20 +10,25 @@
 #include <string.h>
 #include <time.h>
 
+void kb_config_defaults(KBConfig *config) {
+    if (!config) return;
+    memset(config, 0, sizeof(*config));
+    config->background = 255;
+    config->grab_touch = true;
+    config->keep_awake = true;
+    config->restore_ui_on_exit = true;
+    config->auto_clean = true;
+    config->partial_refresh_limit = 24;
+    config->clean_interval_ms = 45000;
+    config->accumulated_coverage_x100 = 250;
+    config->tap_timeout_ms = 350;
+    config->double_tap_ms = 450;
+    config->hold_ms = 650;
+}
+
 static KBConfig kb_default_config(void) {
     KBConfig c;
-    memset(&c, 0, sizeof(c));
-    c.background = 255;
-    c.grab_touch = true;
-    c.keep_awake = true;
-    c.restore_ui_on_exit = true;
-    c.auto_clean = true;
-    c.partial_refresh_limit = 24;
-    c.clean_interval_ms = 45000;
-    c.accumulated_coverage_x100 = 250;
-    c.tap_timeout_ms = 350;
-    c.double_tap_ms = 450;
-    c.hold_ms = 650;
+    kb_config_defaults(&c);
     return c;
 }
 
