@@ -7,6 +7,7 @@ on:
     paths:
       - 'package-src/gambatte-k2/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-validate.sh'
       - '.github/workflows/build-gambatte-k2.yml'
   workflow_dispatch:
 
