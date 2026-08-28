@@ -41,15 +41,15 @@ static void spawn(G2048 *g) {
     g->last_spawn = slot;
 }
 
-static bool line_move(const uint16_t in[4], uint16_t out[4], uint64_t *score_delta) {
-    uint16_t compact[4] = {0,0,0,0};
+static bool line_move(const uint32_t in[4], uint32_t out[4], uint64_t *score_delta) {
+    uint32_t compact[4] = {0,0,0,0};
     int n = 0;
     for (int i = 0; i < 4; ++i) if (in[i]) compact[n++] = in[i];
 
     int o = 0;
     for (int i = 0; i < n; ++i) {
         if (i + 1 < n && compact[i] == compact[i + 1]) {
-            uint16_t merged = (uint16_t)(compact[i] * 2U);
+            uint32_t merged = compact[i] * 2U;
             out[o++] = merged;
             *score_delta += merged;
             ++i;
@@ -59,7 +59,7 @@ static bool line_move(const uint16_t in[4], uint16_t out[4], uint64_t *score_del
     }
     while (o < 4) out[o++] = 0;
 
-    return memcmp(in, out, sizeof(uint16_t) * 4U) != 0;
+    return memcmp(in, out, sizeof(uint32_t) * 4U) != 0;
 }
 
 bool g2048_can_move(const G2048 *g) {
@@ -96,20 +96,23 @@ void g2048_new(G2048 *g, uint64_t seed, uint64_t best) {
     g->last_spawn = -1;
     spawn(g);
     spawn(g);
+    g->changed_mask = UINT16_C(0xFFFF);
     g2048_recompute_flags(g);
 }
 
 bool g2048_move(G2048 *g, G2048Direction dir) {
     if (!g) return false;
 
-    uint16_t before[16];
+    uint32_t before[16];
     memcpy(before, g->cells, sizeof(before));
     uint64_t old_score = g->score;
+    uint64_t old_rng = g->rng;
     uint64_t score_delta = 0;
+    g->changed_mask = 0;
     bool changed = false;
 
     for (int line = 0; line < 4; ++line) {
-        uint16_t in[4], out[4] = {0,0,0,0};
+        uint32_t in[4], out[4] = {0,0,0,0};
         for (int p = 0; p < 4; ++p) in[p] = g->cells[index_for(dir, line, p)];
         if (line_move(in, out, &score_delta)) changed = true;
         for (int p = 0; p < 4; ++p) g->cells[index_for(dir, line, p)] = out[p];
@@ -122,20 +125,33 @@ bool g2048_move(G2048 *g, G2048Direction dir) {
 
     memcpy(g->undo_cells, before, sizeof(before));
     g->undo_score = old_score;
+    g->undo_rng = old_rng;
     g->undo_valid = true;
     g->score += score_delta;
     if (g->score > g->best) g->best = g->score;
     spawn(g);
+    for (int i = 0; i < 16; ++i) {
+        if (before[i] != g->cells[i]) g->changed_mask |= (uint16_t)(1U << i);
+    }
     g2048_recompute_flags(g);
     return true;
 }
 
 bool g2048_undo(G2048 *g) {
     if (!g || !g->undo_valid) return false;
+
+    uint32_t before[16];
+    memcpy(before, g->cells, sizeof(before));
+
     memcpy(g->cells, g->undo_cells, sizeof(g->cells));
     g->score = g->undo_score;
+    g->rng = g->undo_rng;
     g->undo_valid = false;
     g->last_spawn = -1;
+    g->changed_mask = 0;
+    for (int i = 0; i < 16; ++i) {
+        if (before[i] != g->cells[i]) g->changed_mask |= (uint16_t)(1U << i);
+    }
     g2048_recompute_flags(g);
     return true;
 }
