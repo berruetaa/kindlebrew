@@ -51,6 +51,11 @@ jobs:
           readelf -d "$BIN" | grep NEEDED || true
           echo '=== Undefined GL/GLX symbols ==='
           readelf -Ws "$BIN" | awk '$7 == "UND" {print $8}' | grep -E '^(gl|glX|glu)' | sort -u || true
+      - name: Install ARMHF cross compiler
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf
 
       - name: Assemble KPM wrappers
         shell: bash
@@ -64,6 +69,13 @@ jobs:
             cp "package-src/$pkg/launch.sh" "build/$pkg/launch.sh"
             cp "package-src/$pkg/uninstall.sh" "build/$pkg/uninstall.sh"
             chmod 755 "build/$pkg/install.sh" "build/$pkg/launch.sh" "build/$pkg/uninstall.sh"
+            if [ "$pkg" = "chess" ]; then
+              mkdir -p build/chess/lib
+              arm-linux-gnueabihf-gcc -shared -fPIC -Os \
+                -Wl,-soname,libGL.so.1 \
+                package-src/chess/libgl-shim.c \
+                -o build/chess/lib/libGL.so.1
+            fi
           done
 
           python - <<'PY'
@@ -98,8 +110,12 @@ jobs:
               assert m['id'] == pkg
               assert m['version'] == [1,1,0]
               assert m['supported_platforms'] == ['kindlehf']
+              if pkg == 'chess':
+                  assert 'lib/libGL.so.1' in names, names
               print('validated', p)
           PY
+          readelf -d build/chess/lib/libGL.so.1 | grep 'SONAME.*libGL.so.1'
+          readelf -h build/chess/lib/libGL.so.1 | grep 'Machine:.*ARM'
           sha256sum packages/chess/artifacts/chess_1.1.0_kindlehf.kpkg
           sha256sum packages/mines/artifacts/mines_1.1.0_kindlehf.kpkg
 
