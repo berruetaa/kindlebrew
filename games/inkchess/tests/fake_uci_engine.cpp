@@ -15,16 +15,14 @@ int main() {
             std::cout << "uciok\n" << std::flush;
         } else if (line == "isready") {
             std::cout << "readyok\n" << std::flush;
+        } else if (line == "go movetime 101") {
+            std::cout << "info depth 1 nodes 20\n";
+            std::cout << "bestmove e7e5\n" << std::flush;
+            searching = false;
         } else if (line.rfind("go ", 0) == 0) {
+            // Hold the result until stop so the harness can exercise
+            // cancellation/new-game races deterministically.
             searching = true;
-            // Deliberately wait for an explicit "emit" test command so the
-            // harness can exercise stop/new-game races deterministically.
-        } else if (line == "emit") {
-            if (searching) {
-                std::cout << "info depth 1 nodes 20\n";
-                std::cout << "bestmove e7e5\n" << std::flush;
-                searching = false;
-            }
         } else if (line == "stop") {
             if (searching) {
                 std::cout << "bestmove e7e5\n" << std::flush;
