@@ -84,12 +84,12 @@ int main() {
     ChessSession pgame;
     assert(pgame.restore(promotion));
     pgame.tap_square(sq('b','7'));
-    auto pending = pgame.tap_square(sq('b','8'));
+    auto pending = pgame.tap_square(sq('a','8'));
     assert(pending.changed && !pending.moved);
     assert(pgame.pending() == ChessSession::Pending::PROMOTION);
     auto promoted = pgame.choose_promotion(chess::PieceType::KNIGHT);
     assert(promoted.moved);
-    assert(pgame.uci_history().back() == "b7b8n");
+    assert(pgame.uci_history().back() == "b7a8n");
 
     return 0;
 }
