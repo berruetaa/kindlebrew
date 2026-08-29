@@ -583,6 +583,42 @@ int kb_force_clean(KBGame *game) {
     return kb_present(game, KB_REFRESH_CLEAN);
 }
 
+int kb_watch_fd(KBGame *game, int id, int fd) {
+    if (!game || fd < 0) return -1;
+
+    int free_index = -1;
+    for (int i = 0; i < KB_MAX_FD_WATCHES; ++i) {
+        if (!game->fd_watches[i].active) {
+            if (free_index < 0) free_index = i;
+            continue;
+        }
+        if (game->fd_watches[i].id == id || game->fd_watches[i].fd == fd) {
+            kb_set_error(game, "duplicate fd watch id=%d fd=%d", id, fd);
+            return -1;
+        }
+    }
+    if (free_index < 0) {
+        kb_set_error(game, "too many external fd watches");
+        return -1;
+    }
+
+    game->fd_watches[free_index].id = id;
+    game->fd_watches[free_index].fd = fd;
+    game->fd_watches[free_index].active = true;
+    return 0;
+}
+
+int kb_unwatch_fd(KBGame *game, int id) {
+    if (!game) return -1;
+    for (int i = 0; i < KB_MAX_FD_WATCHES; ++i) {
+        if (game->fd_watches[i].active && game->fd_watches[i].id == id) {
+            memset(&game->fd_watches[i], 0, sizeof(game->fd_watches[i]));
+            return 0;
+        }
+    }
+    return 0;
+}
+
 int kb_poll_event(KBGame *game, KBEvent *event, int timeout_ms) {
     if (!game || !event) return -1;
     if (kb_event_pop(game, event)) return 1;
