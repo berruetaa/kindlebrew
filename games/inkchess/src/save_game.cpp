@@ -1,6 +1,7 @@
 #include "save_game.hpp"
 
 #include <cctype>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
