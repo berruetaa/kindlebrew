@@ -970,8 +970,8 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
     maybe_emit_hold(game, kb_now_ms());
     if (kb_event_pop(game, event)) return 1;
 
-    struct pollfd pfds[KB_MAX_INPUT_DEVICES + 1];
-    int map[KB_MAX_INPUT_DEVICES + 1];
+    struct pollfd pfds[KB_MAX_INPUT_DEVICES + 1 + KB_MAX_FD_WATCHES];
+    int map[KB_MAX_INPUT_DEVICES + 1 + KB_MAX_FD_WATCHES];
     int n = 0;
     for (int i = 0; i < k->input_count; ++i) {
         if (k->input[i].fd < 0) continue;
@@ -986,6 +986,14 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
         pfds[n].events = POLLIN;
         pfds[n].revents = 0;
         map[n] = -1;
+        ++n;
+    }
+    for (int i = 0; i < KB_MAX_FD_WATCHES; ++i) {
+        if (!game->fd_watches[i].active) continue;
+        pfds[n].fd = game->fd_watches[i].fd;
+        pfds[n].events = POLLIN | POLLPRI;
+        pfds[n].revents = 0;
+        map[n] = -(i + 2);
         ++n;
     }
     if (n == 0) return 0;
@@ -1020,11 +1028,30 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
 
     if (rc > 0) {
         for (int p = 0; p < n; ++p) {
-            if (map[p] < 0) {
+            if (map[p] == -1) {
                 if (pfds[p].revents & POLLIN) drain_power_events(game);
                 if (pfds[p].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                     teardown_power_events(k);
                     k->power_retry_due_ms = kb_now_ms() + 1000U;
+                }
+                continue;
+            }
+            if (map[p] <= -2) {
+                int wi = -map[p] - 2;
+                unsigned flags = 0;
+                if (pfds[p].revents & (POLLIN | POLLPRI)) flags |= KB_FD_READABLE;
+                if (pfds[p].revents & POLLHUP) flags |= KB_FD_HANGUP;
+                if (pfds[p].revents & POLLERR) flags |= KB_FD_ERROR;
+                if (pfds[p].revents & POLLNVAL) flags |= KB_FD_INVALID;
+                if (flags && wi >= 0 && wi < KB_MAX_FD_WATCHES &&
+                    game->fd_watches[wi].active) {
+                    KBEvent fd_ev;
+                    memset(&fd_ev, 0, sizeof(fd_ev));
+                    fd_ev.type = KB_EVENT_FD;
+                    fd_ev.time_ms = kb_now_ms();
+                    fd_ev.id = game->fd_watches[wi].id;
+                    fd_ev.value = (int)flags;
+                    (void)kb_event_push(game, &fd_ev);
                 }
                 continue;
             }
