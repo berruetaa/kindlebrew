@@ -44,6 +44,7 @@ class ChessSession {
     [[nodiscard]] bool can_undo() const noexcept;
     [[nodiscard]] bool can_claim_current() const;
     [[nodiscard]] bool engine_should_claim() const;
+    [[nodiscard]] bool engine_can_claim_with_move(std::string_view uci) const;
 
     [[nodiscard]] int selected_square() const noexcept { return selected_square_; }
     [[nodiscard]] std::uint64_t legal_target_mask() const noexcept { return target_mask_; }
@@ -55,6 +56,8 @@ class ChessSession {
     TapResult play_pending_claim_move();
     bool claim_pending_draw();
     bool claim_current_draw();
+    bool claim_engine_current_draw();
+    bool claim_engine_intended_draw(std::string_view uci);
 
     // Engine moves are always independently checked against current legal moves.
     bool apply_engine_move(std::string_view uci, std::uint64_t* dirty_squares = nullptr);
