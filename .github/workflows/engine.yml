@@ -10,6 +10,8 @@ on:
       - 'engine/**'
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
+      - 'games/inkchess/**'
+      - 'games/inkchess/**'
       - 'package-src/ink2048/**'
       - 'tools/kpm-pack.sh'
       - 'tools/kpm-validate.sh'
@@ -46,6 +48,7 @@ jobs:
           make -C engine clean test CFLAGS='-O2 -Werror'
           make -C engine all CFLAGS='-O2 -Werror'
           make -C games/ink2048 clean test CFLAGS='-O2 -Werror'
+          make -C games/inkchess clean test CXXFLAGS='-O2 -Werror'
 
       - name: Validate sh_integration game cover headers
         run: |
@@ -121,6 +124,7 @@ jobs:
           san='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
           make -C engine clean test CFLAGS="$san"
           make -C games/ink2048 clean test CFLAGS="$san"
+          make -C games/inkchess clean test CXXFLAGS="$san"
 
   kindlehf:
     runs-on: ubuntu-24.04
