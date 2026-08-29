@@ -164,8 +164,7 @@ No periodic 20/50/100 ms Stockfish polling timer.
 The board layout derives from the runtime canvas dimensions. Never hard-code a
 Kindle resolution.
 
-Pieces are rasterized at build time from a redistributable SVG set into compact
-8-bit masks. Runtime has no SVG, Cairo, GTK, PNG or OpenGL dependency.
+Pieces use GNOME Chess's default `simple` SVG set, vendored with its original W3C Software Notice and License. The SVGs are rasterized at build time into compact Gray8 + alpha masks sized for the KBGE board cells. Runtime has no SVG, Cairo, GTK, PNG or OpenGL dependency. Artwork geometry is preserved; only grayscale/raster sampling is adapted for e-ink.
 
 KBGE gains a clipped grayscale-mask blit primitive. It must:
 
