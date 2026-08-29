@@ -292,7 +292,12 @@ ChessSession::TapResult ChessSession::play_pending_claim_move() {
     TapResult result;
     if (pending_ != Pending::CLAIM_INTENDED || !pending_move_) return result;
     const chess::Move move = *pending_move_;
-    return prepare_move(move);  // would re-open claim; clear it first.
+    // The user explicitly declined a valid pre-move claim. Commit this exact
+    // move without re-running the same claim gate.
+    result.dirty_squares = commit_move(move);
+    result.changed = true;
+    result.moved = true;
+    return result;
 }
 
 bool ChessSession::claim_pending_draw() {
