@@ -124,6 +124,12 @@ bool ChessSession::engine_should_claim() const {
     return engine_turn() && current_draw_claims(board_).any();
 }
 
+bool ChessSession::engine_can_claim_with_move(std::string_view uci) const {
+    if (!engine_turn()) return false;
+    const auto move = legal_uci(uci);
+    return move.has_value() && draw_claims_after_move(board_, *move).any();
+}
+
 bool ChessSession::piece_is_current_side(int square) const {
     if (square < 0 || square >= 64) return false;
     const chess::Piece p = board_.at(chess::Square(square));
@@ -313,6 +319,24 @@ bool ChessSession::claim_pending_draw() {
 
 bool ChessSession::claim_current_draw() {
     if (!can_claim_current()) return false;
+    outcome_ = OutcomeOverride::DRAW_CLAIM;
+    selected_square_ = -1;
+    target_mask_ = 0;
+    clear_pending();
+    return true;
+}
+
+bool ChessSession::claim_engine_current_draw() {
+    if (!engine_should_claim()) return false;
+    outcome_ = OutcomeOverride::DRAW_CLAIM;
+    selected_square_ = -1;
+    target_mask_ = 0;
+    clear_pending();
+    return true;
+}
+
+bool ChessSession::claim_engine_intended_draw(std::string_view uci) {
+    if (!engine_can_claim_with_move(uci)) return false;
     outcome_ = OutcomeOverride::DRAW_CLAIM;
     selected_square_ = -1;
     target_mask_ = 0;
