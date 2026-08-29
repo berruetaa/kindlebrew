@@ -12,6 +12,7 @@
 #define KB_MAX_DIRTY_RECTS 16
 #define KB_EVENT_QUEUE_CAP 128
 #define KB_MAX_TIMERS 32
+#define KB_MAX_FD_WATCHES 8
 
 typedef struct {
     KBRect rects[KB_MAX_DIRTY_RECTS];
@@ -35,6 +36,12 @@ typedef struct {
 } KBTimer;
 
 typedef struct {
+    int id;
+    int fd;
+    bool active;
+} KBFdWatch;
+
+typedef struct {
     int (*init)(KBGame *game);
     void (*shutdown)(KBGame *game);
     int (*present)(KBGame *game, const KBRect *rects, int count, KBRefreshMode mode, bool flashing);
@@ -52,6 +59,7 @@ struct KBGame {
     unsigned event_head;
     unsigned event_tail;
     KBTimer timers[KB_MAX_TIMERS];
+    KBFdWatch fd_watches[KB_MAX_FD_WATCHES];
     uint64_t rng_state;
     char error[256];
     void *backend;
