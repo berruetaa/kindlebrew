@@ -115,6 +115,42 @@ static void test_canvas(void) {
     kb_destroy(g);
 }
 
+static void test_alpha_blit(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 4;
+    cfg.height = 4;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    const uint8_t src[4] = {0, 255, 100, 50};
+    const uint8_t alpha[4] = {255, 0, 128, 255};
+
+    kb_clear(g, 200);
+    kb_damage_reset(g);
+    kb_blit_gray8_alpha(g, 1, 1, src, alpha, 2, 2, 2);
+    const KBCanvas *c = kb_canvas(g);
+    assert(c->pixels[1 * c->stride + 1] == 0);
+    assert(c->pixels[1 * c->stride + 2] == 200);
+    assert(c->pixels[2 * c->stride + 1] == 150);
+    assert(c->pixels[2 * c->stride + 2] == 50);
+    assert(g->damage.count == 1);
+    assert(g->damage.rects[0].x == 1 && g->damage.rects[0].y == 1);
+    assert(g->damage.rects[0].w == 2 && g->damage.rects[0].h == 2);
+    assert(g->damage.has_gray);
+
+    const uint8_t opaque[4] = {255,255,255,255};
+    kb_clear(g, 123);
+    kb_damage_reset(g);
+    kb_blit_gray8_alpha(g, -1, -1, src, opaque, 2, 2, 2);
+    assert(c->pixels[0] == 50);
+    assert(g->damage.count == 1);
+    assert(g->damage.rects[0].x == 0 && g->damage.rects[0].y == 0);
+    assert(g->damage.rects[0].w == 1 && g->damage.rects[0].h == 1);
+
+    kb_destroy(g);
+}
+
 static void test_text(void) {
     KBRect m = kb_measure_text8("AB\nC", 2);
     assert(m.w == 32 && m.h == 32);
@@ -214,6 +250,46 @@ static void test_event_queue_pressure(void) {
         if (out.type == KB_EVENT_QUIT) saw_quit = true;
     }
     assert(kept_suspend && saw_quit);
+    kb_destroy(g);
+}
+
+static void test_external_fd_watch(void) {
+    KBConfig cfg;
+    kb_config_defaults(&cfg);
+    cfg.width = 8;
+    cfg.height = 8;
+    KBGame *g = kb_create(&cfg);
+    assert(g);
+
+    int fds[2];
+    assert(pipe(fds) == 0);
+    assert(kb_watch_fd(g, 17, fds[0]) == 0);
+    assert(kb_watch_fd(g, 17, fds[1]) == -1);
+    assert(kb_watch_fd(g, 18, fds[0]) == -1);
+
+    const char byte = 'x';
+    assert(write(fds[1], &byte, 1) == 1);
+
+    KBEvent ev;
+    assert(kb_poll_event(g, &ev, 100) == 1);
+    assert(ev.type == KB_EVENT_FD && ev.id == 17);
+    assert(((unsigned)ev.value & KB_FD_READABLE) != 0);
+
+    char got = 0;
+    assert(read(fds[0], &got, 1) == 1 && got == byte);
+
+    assert(kb_unwatch_fd(g, 17) == 0);
+    assert(kb_unwatch_fd(g, 17) == 0); /* idempotent */
+    assert(kb_poll_event(g, &ev, 0) == 0);
+
+    assert(kb_watch_fd(g, 19, fds[0]) == 0);
+    close(fds[1]);
+    assert(kb_poll_event(g, &ev, 100) == 1);
+    assert(ev.type == KB_EVENT_FD && ev.id == 19);
+    assert(((unsigned)ev.value & KB_FD_HANGUP) != 0);
+
+    assert(kb_unwatch_fd(g, 19) == 0);
+    close(fds[0]);
     kb_destroy(g);
 }
 
@@ -399,8 +475,10 @@ int main(void) {
     test_damage_accumulator_pressure();
     test_damage_compaction();
     test_canvas();
+    test_alpha_blit();
     test_text();
     test_event_queue_pressure();
+    test_external_fd_watch();
     test_long_suspend_timer_catchup();
     test_timer_deadline_saturation();
     test_runtime_services();
