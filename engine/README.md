@@ -1,4 +1,4 @@
-# Kindlebrew Game Engine (KBGE) 0.2
+# Kindlebrew Game Engine (KBGE) 0.3
 
 A native game runtime designed specifically for jailbroken Kindle e-ink devices.
 
@@ -15,6 +15,8 @@ This is not an LCD game loop with a Kindle backend bolted on. KBGE treats the el
 - Automatic ghosting budget and periodic clean refresh.
 - MediaTek low-latency mode with automatic restoration.
 - Timers integrated into the event loop.
+- Caller-owned external file-descriptor watches integrated into the same blocking poll loop (for engines/process pipes).
+- Clipped Gray8 alpha compositing for sprite masks.
 - Atomic per-game persistence and deterministic RNG.
 - Suspend/resume/resize/orientation lifecycle events.
 - Touchscreen discovery through FBInk instead of hard-coded event nodes.
@@ -91,6 +93,12 @@ At startup KBGE takes an exclusive process lock, opens and initializes FBInk, de
 A dedicated LIPC watcher feeds powerd lifecycle events into the same poll loop. On wake, KBGE revalidates FBInk. It restores the canonical canvas when geometry stayed stable; if geometry changed it queues RESIZE and waits for the game to relayout instead of flashing stale content.
 
 At shutdown it releases touch grabs, restores MTK auto-REAGL and the screensaver policy, closes the framebuffer and asks X to repaint the Kindle UI.
+
+## External file descriptors
+
+`kb_watch_fd()` registers a caller-owned descriptor with a stable integer id. Readability, hangup, error and invalid-descriptor conditions are delivered as `KB_EVENT_FD`; the flags are carried in `event.value` using `KBFdEventFlags`. `kb_unwatch_fd()` is idempotent and KBGE never closes watched descriptors.
+
+This is intended for event-driven subprocess/protocol integration. Do not emulate it with a high-frequency timer.
 
 ## Reference title
 
