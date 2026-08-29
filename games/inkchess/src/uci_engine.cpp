@@ -114,12 +114,15 @@ bool UciEngine::start(const std::string& executable, int elo) {
         close(from_child[1]);
         if (devnull >= 0 && devnull != STDERR_FILENO) close(devnull);
 
+        (void)signal(SIGPIPE, SIG_DFL);
         execl(executable.c_str(), executable.c_str(), static_cast<char*>(nullptr));
         _exit(127);
     }
 
     close(to_child[0]);
     close(from_child[1]);
+    // A dead UCI child must become an EPIPE error, never terminate the GUI.
+    (void)signal(SIGPIPE, SIG_IGN);
     pid_ = child;
     stdin_fd_ = to_child[1];
     stdout_fd_ = from_child[0];
