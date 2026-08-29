@@ -36,8 +36,13 @@ int main(int argc, char** argv) {
     pump_until(engine, UciEngine::State::IDLE);
     assert(engine.ready());
 
-    // Search command should transition atomically and expose no move until the
-    // engine produces a bestmove.
+    // A normal result becomes visible only after a complete bestmove line.
+    assert(engine.search({"e2e4"}, 101));
+    pump_until(engine, UciEngine::State::IDLE);
+    auto normal = engine.take_bestmove();
+    assert(normal.has_value() && *normal == "e7e5");
+
+    // Search command with a held result exposes nothing before cancellation.
     assert(engine.search({"e2e4"}, 100));
     assert(engine.state() == UciEngine::State::SEARCHING);
     assert(!engine.take_bestmove().has_value());
