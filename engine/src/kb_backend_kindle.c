@@ -57,6 +57,7 @@ typedef struct {
     unsigned char *fb;
     size_t fb_size;
     bool direct_y8;
+    bool has_presented;
     bool keep_awake_set;
     bool mtk_fast_mode_set;
 
@@ -219,6 +220,14 @@ static void refresh_fb_pointer(KBGame *game) {
             last_row + width <= k->fb_size;
     }
 
+    /*
+     * FBInk exposes current_rota as the device rotation, not the backing
+     * buffer layout.  Its Kindle pixel path deliberately leaves coordinates
+     * untouched for every native rotation.  Rossini/Bellatrix normally
+     * reports FB_ROTATE_CCW while keeping a conventional top-left Y8 buffer,
+     * so requiring FB_ROTATE_UR here incorrectly disabled the only drawing
+     * path available in a MINIMAL build without IMAGE support.
+     */
     k->direct_y8 = k->fb &&
                    mapping_covers_screen &&
                    k->fb_state.pixel_format == FBINK_PXFMT_Y8 &&
@@ -227,8 +236,7 @@ static void refresh_fb_pointer(KBGame *game) {
                    k->fb_state.view_width == k->fb_state.screen_width &&
                    k->fb_state.view_height == k->fb_state.screen_height &&
                    k->fb_state.view_hori_origin == 0 &&
-                   k->fb_state.view_vert_origin == 0 &&
-                   k->fb_state.current_rota == FB_ROTATE_UR;
+                   k->fb_state.view_vert_origin == 0;
     game->device.direct_framebuffer_y8 = k->direct_y8;
 }
 
@@ -925,11 +933,12 @@ static int kindle_present(KBGame *game, const KBRect *rects, int count, KBRefres
     KBKindle *k = (KBKindle *)game->backend;
     if (!k || k->fbfd < 0) return -1;
 
-    if (flashing && !k->fb_state.unreliable_wait_for) {
+    if (flashing && k->has_presented && !k->fb_state.unreliable_wait_for) {
         /* Fence the previous batch before a disruptive full waveform. */
         (void)fbink_wait_for_complete(k->fbfd, LAST_MARKER);
     }
 
+    bool submitted = false;
     for (int i = 0; i < count; ++i) {
         KBRect r = kb_rect_clip(rects[i], game->canvas.width, game->canvas.height);
         if (kb_rect_empty(r)) continue;
@@ -952,7 +961,9 @@ static int kindle_present(KBGame *game, const KBRect *rects, int count, KBRefres
             kb_set_error(game, "fbink_refresh_rect failed: %d", rc);
             return -1;
         }
+        submitted = true;
     }
+    if (submitted) k->has_presented = true;
     return 0;
 }
 
@@ -1119,6 +1130,9 @@ static int kindle_init(KBGame *game) {
     memset(&k->fb_cfg, 0, sizeof(k->fb_cfg));
     k->fb_cfg.is_quiet = true;
     k->fb_cfg.ignore_alpha = true;
+    /* KBGE owns the full framebuffer; cell-font viewport padding must not
+     * shift direct canvas coordinates (Rossini otherwise reports y = 4). */
+    k->fb_cfg.no_viewport = true;
 
     k->fbfd = fbink_open();
     if (k->fbfd < 0) {
