@@ -40,20 +40,26 @@ $(KINDLE_BUILD):
 $(ASSET_BUILD):
 	mkdir -p $@
 
-$(RULES_TEST): tests/test_rules.cpp src/game_rules.hpp third_party/chess.hpp | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/test_rules.cpp -o $@
+$(RULES_TEST): tests/test_rules.cpp src/game_rules.hpp third_party/chess.hpp | $(HOST_BUILD)
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_rules.cpp -o $@
 
-$(FAKE_ENGINE): tests/fake_uci_engine.cpp | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fake_uci_engine.cpp -o $@
+$(FAKE_ENGINE): tests/fake_uci_engine.cpp | $(HOST_BUILD)
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/fake_uci_engine.cpp -o $@
 
-$(UCI_TEST): tests/test_uci.cpp src/uci_engine.cpp src/uci_engine.hpp | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/test_uci.cpp src/uci_engine.cpp -pthread -o $@
+$(UCI_TEST): tests/test_uci.cpp src/uci_engine.cpp src/uci_engine.hpp | $(HOST_BUILD)
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_uci.cpp src/uci_engine.cpp -pthread -o $@
 
-$(SAVE_TEST): tests/test_save.cpp src/save_game.cpp src/save_game.hpp third_party/chess.hpp | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/test_save.cpp src/save_game.cpp -o $@
+$(SAVE_TEST): tests/test_save.cpp src/save_game.cpp src/save_game.hpp third_party/chess.hpp | $(HOST_BUILD)
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_save.cpp src/save_game.cpp -o $@
 
-$(SESSION_TEST): tests/test_session.cpp src/chess_session.cpp src/chess_session.hpp src/game_rules.hpp src/save_game.hpp third_party/chess.hpp | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/test_session.cpp src/chess_session.cpp -o $@
+$(SESSION_TEST): tests/test_session.cpp src/chess_session.cpp src/chess_session.hpp src/game_rules.hpp src/save_game.hpp third_party/chess.hpp | $(HOST_BUILD)
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_session.cpp src/chess_session.cpp -o $@
+
+$(ENGINE_DIR)/build/host/libkbgame.a:
+	$(MAKE) -C $(ENGINE_DIR) all
+
+$(HOST_APP): $(APP_SRC) src/renderer.hpp src/chess_session.hpp src/save_game.hpp src/uci_engine.hpp third_party/chess.hpp $(ENGINE_DIR)/build/host/libkbgame.a | $(HOST_BUILD)
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) $(APP_SRC) $(ENGINE_DIR)/build/host/libkbgame.a -pthread -o $@
 
 test: all
 	$(RULES_TEST)
