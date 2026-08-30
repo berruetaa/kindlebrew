@@ -141,7 +141,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools librsvg2-bin python3-pil qemu-user
+          sudo apt-get install -y libarchive-tools librsvg2-bin python3-pil qemu-user libc6-armhf-cross
 
       - name: Install KindleModding kindlehf toolchain
         shell: bash
@@ -186,7 +186,7 @@ jobs:
           make -C build/stockfish-src/src -j2 build \
             ARCH=armv7 COMP=gcc \
             COMPCXX=arm-kindlehf-linux-gnueabihf-g++ \
-            EXTRALDFLAGS='-static'
+            EXTRALDFLAGS='-static-libstdc++ -static-libgcc -Wl,-Bstatic -latomic -Wl,-Bdynamic -Wl,--as-needed'
 
           cp build/stockfish-src/src/stockfish build/stockfish-kindlehf
           arm-kindlehf-linux-gnueabihf-strip --strip-unneeded build/stockfish-kindlehf
@@ -194,28 +194,27 @@ jobs:
           file build/stockfish-kindlehf
           arm-kindlehf-linux-gnueabihf-readelf -h build/stockfish-kindlehf | grep -E 'Class:|Machine:'
           arm-kindlehf-linux-gnueabihf-readelf -d build/stockfish-kindlehf | tee /tmp/stockfish-needed.txt
-          ! grep -F '(NEEDED)' /tmp/stockfish-needed.txt
-          file build/stockfish-kindlehf | grep -F 'statically linked'
+          ! grep -Eq 'libstdc\+\+|libgcc|libatomic' /tmp/stockfish-needed.txt
+          for lib in libpthread.so.0 librt.so.1 libm.so.6 libc.so.6; do
+            grep -F "Shared library: [$lib]" /tmp/stockfish-needed.txt
+          done
 
-          cat > /tmp/arm-static-smoke.c <<'EOF'
-          #include <stdio.h>
-          int main(void) { puts("arm-static-ok"); return 0; }
-          EOF
-          arm-kindlehf-linux-gnueabihf-gcc -static /tmp/arm-static-smoke.c -o /tmp/arm-static-smoke
-          qemu-arm -cpu cortex-a7 /tmp/arm-static-smoke | grep -F 'arm-static-ok'
-
+          # QEMU user-mode and the Kindle toolchain's old glibc loader do not
+          # cooperate reliably on current Ubuntu runners. Smoke-test the exact
+          # ARM executable against Ubuntu's armhf runtime instead; the physical
+          # KT6 gate below remains authoritative for Kindle glibc compatibility.
+          test -x /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3
           set +e
           printf 'uci\nisready\nposition startpos\neval\nquit\n' \
-            | qemu-arm -cpu cortex-a7 -strace build/stockfish-kindlehf \
-            > /tmp/stockfish-smoke.txt 2> /tmp/stockfish-strace.txt
+            | qemu-arm -cpu cortex-a7 -L /usr/arm-linux-gnueabihf \
+                build/stockfish-kindlehf \
+            > /tmp/stockfish-smoke.txt 2> /tmp/stockfish-smoke.err
           stockfish_rc=$?
           set -e
           if [ "$stockfish_rc" -ne 0 ]; then
             echo "Stockfish qemu smoke failed with rc=$stockfish_rc"
-            echo "--- stdout ---"
             cat /tmp/stockfish-smoke.txt || true
-            echo "--- strace tail ---"
-            tail -n 160 /tmp/stockfish-strace.txt || true
+            cat /tmp/stockfish-smoke.err || true
             exit "$stockfish_rc"
           fi
           grep -F 'uciok' /tmp/stockfish-smoke.txt
