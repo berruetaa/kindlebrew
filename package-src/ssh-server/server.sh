@@ -129,7 +129,11 @@ start_server() {
 
   firewall_open || return 1
 
-  if ! "$DROPBEAR" \
+  if ! env -i \
+      PATH="$BASE/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+      HOME="/root" USER="root" LOGNAME="root" \
+      "$DROPBEAR" \
+      -e \
       -r "$HOSTKEY" \
       -D "$STATE" \
       -s -j -k -m \
