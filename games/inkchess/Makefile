@@ -1,4 +1,5 @@
 CXX ?= g++
+# InkChess host and kindlehf build
 CPPFLAGS ?=
 CXXFLAGS ?= -O2
 CXXFLAGS += -std=c++17 -Wall -Wextra -Wpedantic -Werror
