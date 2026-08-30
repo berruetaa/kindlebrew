@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../third_party/chess.hpp"
+#include "chess_vendor.hpp"
 
 namespace inkchess {
 
