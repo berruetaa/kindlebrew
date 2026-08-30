@@ -55,6 +55,19 @@
           "supported_platforms": ["kindlehf"]
         }
       ]
+    },
+    "dropbear-ssh": {
+      "name": "Dropbear SSH",
+      "author": "Akshay / notmarek / Matt Johnston",
+      "description": "On-demand SSH/SFTP server over Kindle Wi-Fi with a Start/Stop UI, device-aware Dropbear binaries and optional keep-awake mode.",
+      "artifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/akshaylahudkar/dropbear-ssh/main/packages/dropbear-ssh/artifacts/dropbear-ssh_0.1.17_kindlehf.kpkg",
+          "version": [0, 1, 17],
+          "dependencies": [],
+          "supported_platforms": ["kindlehf"]
+        }
+      ]
     }
   }
 }
