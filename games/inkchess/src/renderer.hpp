@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "kbgame.h"
-#include "../third_party/chess.hpp"
+#include "chess_vendor.hpp"
 #include "save_game.hpp"
 
 namespace inkchess {
