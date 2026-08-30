@@ -11,8 +11,8 @@ on:
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
       - 'games/inkchess/**'
-      - 'games/inkchess/**'
       - 'package-src/ink2048/**'
+      - 'package-src/chess/**'
       - 'tools/kpm-pack.sh'
       - 'tools/kpm-validate.sh'
       - 'tools/render-game-scriptlet.py'
@@ -22,7 +22,9 @@ on:
       - 'engine/**'
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
+      - 'games/inkchess/**'
       - 'package-src/ink2048/**'
+      - 'package-src/chess/**'
       - 'tools/kpm-pack.sh'
       - 'tools/kpm-validate.sh'
       - 'tools/render-game-scriptlet.py'
@@ -139,7 +141,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y libarchive-tools librsvg2-bin python3-pil qemu-user
 
       - name: Install KindleModding kindlehf toolchain
         shell: bash
