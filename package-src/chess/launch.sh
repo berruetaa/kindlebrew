@@ -1,19 +1,23 @@
 #!/bin/sh
 set -eu
 
-TARGET="/mnt/us/extensions/gnomegames"
-ENTRY="$TARGET/bin/gnomegames.sh"
-SHIM="$TARGET/lib/libGL.so.1"
+TARGET="/mnt/us/extensions/kindlebrew-chess"
+BIN="$TARGET/inkchess"
+ENGINE="$TARGET/stockfish"
+ASSETS="$TARGET/assets"
 
-if [ ! -f "$ENTRY" ]; then
-  echo "GNOME Chess runtime is not installed correctly."
+if [ ! -x "$BIN" ]; then
+  echo "Ink Chess is not installed."
+  exit 1
+fi
+if [ ! -x "$ENGINE" ]; then
+  echo "Ink Chess Stockfish engine is missing."
+  exit 1
+fi
+if [ ! -d "$ASSETS" ]; then
+  echo "Ink Chess piece assets are missing."
   exit 1
 fi
 
-if [ ! -f "$SHIM" ]; then
-  echo "GNOME Chess libGL compatibility shim is missing."
-  exit 1
-fi
-
-export LD_LIBRARY_PATH="$TARGET/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec sh "$ENTRY" glchess "$@"
+export INKCHESS_ASSET_DIR="$ASSETS"
+exec "$BIN" "$ENGINE" "$@"
