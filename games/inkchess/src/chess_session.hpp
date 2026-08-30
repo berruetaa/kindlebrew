@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "../third_party/chess.hpp"
+#include "chess_vendor.hpp"
 #include "game_rules.hpp"
 #include "save_game.hpp"
 
