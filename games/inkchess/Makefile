@@ -67,5 +67,30 @@ test: all
 	$(SAVE_TEST)
 	$(SESSION_TEST)
 
+$(ASSET_STAMP): $(ASSET_TOOL) $(addprefix $(GNOME_ASSET_SRC)/,$(addsuffix .svg,$(ASSET_NAMES))) | $(ASSET_BUILD)
+	python3 $(ASSET_TOOL) --src $(GNOME_ASSET_SRC) --out $(ASSET_BUILD)
+	@for f in $(ASSET_FILES); do test -s "$f"; test "$(wc -c < "$f")" -eq 32768; done
+	touch $@
+
+assets: $(ASSET_STAMP)
+
+# Kindle cross build ----------------------------------------------------------
+KINDLE_PREFIX ?= arm-kindlehf-linux-gnueabihf-
+KCXX := $(KINDLE_PREFIX)g++
+KSTRIP := $(KINDLE_PREFIX)strip
+FBINK_DIR ?= $(ENGINE_DIR)/vendor/FBInk
+KINDLE_CPPFLAGS := $(COMMON_CPPFLAGS) -DKB_KINDLE -DFBINK_FOR_KINDLE -DFBINK_MINIMAL -DFBINK_WITH_DRAW -DFBINK_WITH_INPUT -I$(FBINK_DIR)
+KINDLE_CXXFLAGS := -Os $(COMMON_CXXFLAGS) -ffunction-sections -fdata-sections
+KINDLE_LDFLAGS := -Wl,--gc-sections -static-libstdc++ -static-libgcc
+
+$(KINDLE_BUILD)/inkchess: $(APP_SRC) src/renderer.hpp src/chess_session.hpp src/save_game.hpp src/uci_engine.hpp third_party/chess.hpp $(ENGINE_DIR)/build/kindle/libkbgame.a $(ASSET_STAMP) | $(KINDLE_BUILD)
+	@test -f "$(FBINK_DIR)/Release/libfbink.a" || (echo "Build FBInk staticlib first"; exit 1)
+	$(KCXX) $(KINDLE_CPPFLAGS) $(KINDLE_CXXFLAGS) $(APP_SRC) $(ENGINE_DIR)/build/kindle/libkbgame.a $(FBINK_DIR)/Release/libfbink.a -lm -pthread $(KINDLE_LDFLAGS) -o $@
+	$(KSTRIP) --strip-unneeded $@
+
+kindle: $(KINDLE_BUILD)/inkchess
+	file $(KINDLE_BUILD)/inkchess
+	@for f in $(ASSET_FILES); do test -s "$f"; done
+
 clean:
 	rm -rf build
