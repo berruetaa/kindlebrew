@@ -1,0 +1,9 @@
+/build/
+/engine/build/
+/games/*/build/
+/tools/kindle-lab/build/
+/tools/kindle-lab/evidence/
+/tools/kindle-lab/config.local.psd1
+
+**/__pycache__/
+*.pyc

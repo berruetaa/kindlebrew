@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+*.kpkg binary
+*.r8a8 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.gz binary
+*.xz binary
+*.so binary
+*.a binary
