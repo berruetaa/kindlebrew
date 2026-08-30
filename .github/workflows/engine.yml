@@ -202,7 +202,7 @@ jobs:
             > /tmp/stockfish-smoke.txt
           grep -F 'uciok' /tmp/stockfish-smoke.txt
           grep -F 'readyok' /tmp/stockfish-smoke.txt
-          grep -F 'NNUE derived piece values' /tmp/stockfish-smoke.txt
+          grep -F 'Final evaluation' /tmp/stockfish-smoke.txt
 
       - name: Cross-build engine and reference games
         shell: bash
