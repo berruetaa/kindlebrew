@@ -308,6 +308,76 @@ jobs:
           PY
           sha256sum packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
 
+      - name: Assemble Ink Chess KPM package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/chess-kpkg
+          mkdir -p build/chess-kpkg/payload/assets packages/chess/artifacts
+
+          cp package-src/chess/manifest.json build/chess-kpkg/manifest.json
+          cp package-src/chess/install.sh build/chess-kpkg/install.sh
+          cp package-src/chess/launch.sh build/chess-kpkg/launch.sh
+          cp package-src/chess/uninstall.sh build/chess-kpkg/uninstall.sh
+          cp package-src/chess/LICENSE build/chess-kpkg/LICENSE
+          cp package-src/chess/SOURCE.txt build/chess-kpkg/SOURCE.txt
+
+          cp games/inkchess/third_party/chess-library.LICENSE \
+            build/chess-kpkg/CHESS-LIBRARY-LICENSE.txt
+          cp games/inkchess/assets/gnome-simple/COPYING.html \
+            build/chess-kpkg/GNOME-PIECES-LICENSE.html
+          cp build/stockfish-src/Copying.txt \
+            build/chess-kpkg/STOCKFISH-LICENSE.txt
+
+          cp games/inkchess/build/kindle/inkchess build/chess-kpkg/payload/inkchess
+          cp build/stockfish-kindlehf build/chess-kpkg/payload/stockfish
+          cp games/inkchess/build/assets/*.r8a8 build/chess-kpkg/payload/assets/
+
+          chmod 755 build/chess-kpkg/install.sh build/chess-kpkg/launch.sh \
+            build/chess-kpkg/uninstall.sh build/chess-kpkg/payload/inkchess \
+            build/chess-kpkg/payload/stockfish
+
+          python tools/render-game-scriptlet.py \
+            --package-source package-src/chess \
+            --stage-dir build/chess-kpkg
+          chmod 755 build/chess-kpkg/scriptlet.sh build/chess-kpkg/library-install.sh
+
+          bash tools/kpm-pack.sh \
+            build/chess-kpkg \
+            packages/chess/artifacts/chess_2.0.0_kindlehf.kpkg
+
+          bash tools/kpm-validate.sh packages/chess/artifacts/chess_2.0.0_kindlehf.kpkg
+
+          python - <<'PY'
+          import json
+          import tarfile
+
+          p='packages/chess/artifacts/chess_2.0.0_kindlehf.kpkg'
+          with tarfile.open(p, 'r:gz') as t:
+              names=set(t.getnames())
+              required={
+                  'manifest.json','library.json','install.sh','launch.sh',
+                  'uninstall.sh','LICENSE','SOURCE.txt','scriptlet.sh',
+                  'library-install.sh','payload/inkchess','payload/stockfish',
+                  'CHESS-LIBRARY-LICENSE.txt','GNOME-PIECES-LICENSE.html',
+                  'STOCKFISH-LICENSE.txt'
+              }
+              missing=required-names
+              assert not missing, missing
+              assets=sorted(n for n in names if n.startswith('payload/assets/') and n.endswith('.r8a8'))
+              assert len(assets) == 12, assets
+              for asset in assets:
+                  assert t.getmember(asset).size == 32768, (asset, t.getmember(asset).size)
+              m=json.load(t.extractfile('manifest.json'))
+          assert m['manifest_version'] == 2
+          assert m['id'] == 'chess'
+          assert m['version'] == [2,0,0]
+          assert m['supported_platforms'] == ['kindlehf']
+          print('validated', p)
+          PY
+
+          sha256sum packages/chess/artifacts/chess_2.0.0_kindlehf.kpkg
+
       - name: Publish generated KPM packages
         if: github.event_name == 'push'
         shell: bash
