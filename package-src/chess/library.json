@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "Ink Chess",
+  "author": "Kindlebrew",
+  "document_name": "Ink-Chess.sh",
+  "legacy_document_names": ["GnomeChess.sh"],
+  "cover": null
+}
