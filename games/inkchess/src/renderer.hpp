@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "kbgame.h"
 #include "../third_party/chess.hpp"
@@ -36,6 +37,7 @@ struct UiModel {
     std::uint64_t last_move_mask = 0;
     bool can_undo = false;
     bool can_claim_draw = false;
+    bool can_resign = false;
     bool engine_thinking = false;
     bool engine_available = true;
     std::string status;
@@ -61,6 +63,14 @@ class Renderer {
     [[nodiscard]] int overlay_option_at(const UiModel& model, int x, int y) const;
 
    private:
+    struct PieceBitmap {
+        bool loaded = false;
+        std::vector<std::uint8_t> gray;
+        std::vector<std::uint8_t> alpha;
+        std::vector<std::uint8_t> scaled_gray;
+        std::vector<std::uint8_t> scaled_alpha;
+    };
+
     struct Layout {
         int width = 0;
         int height = 0;
@@ -90,9 +100,16 @@ class Renderer {
     void draw_overlay(const UiModel& model);
     void draw_centered(KBRect r, const std::string& text, int max_scale,
                        std::uint8_t fg, int bg);
+    void load_piece_assets();
+    void rebuild_piece_cache();
+    [[nodiscard]] static int piece_asset_index(chess::Piece piece);
 
     KBGame* kb_ = nullptr;
     Layout l_{};
+    std::array<PieceBitmap, 12> pieces_{};
+    std::string asset_dir_;
+    bool assets_attempted_ = false;
+    int piece_px_ = 0;
 };
 
 }  // namespace inkchess
