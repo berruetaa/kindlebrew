@@ -2,16 +2,29 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
 
 namespace inkchess {
 
 namespace {
 
 constexpr std::array<const char*, 6> kPieceLetters = {"P", "N", "B", "R", "Q", "K"};
+constexpr std::array<const char*, 12> kPieceFiles = {
+    "whitePawn.r8a8", "whiteKnight.r8a8", "whiteBishop.r8a8",
+    "whiteRook.r8a8", "whiteQueen.r8a8", "whiteKing.r8a8",
+    "blackPawn.r8a8", "blackKnight.r8a8", "blackBishop.r8a8",
+    "blackRook.r8a8", "blackQueen.r8a8", "blackKing.r8a8"};
+constexpr int kPieceSourceSize = 128;
+constexpr std::size_t kPiecePlaneBytes =
+    static_cast<std::size_t>(kPieceSourceSize) * static_cast<std::size_t>(kPieceSourceSize);
 
 }  // namespace
 
 Renderer::Renderer(KBGame* kb) : kb_(kb) {
+    const char* env = std::getenv("INKCHESS_ASSET_DIR");
+    asset_dir_ = (env && *env) ? env : "/mnt/us/extensions/kindlebrew-chess/assets";
     relayout();
 }
 
@@ -85,6 +98,9 @@ void Renderer::relayout() {
             l_.modal.w - 2 * l_.margin,
             option_h};
     }
+
+    load_piece_assets();
+    rebuild_piece_cache();
 }
 
 bool Renderer::flipped(const UiModel& model) const {
@@ -112,9 +128,82 @@ KBRect Renderer::square_rect(const UiModel& model, int square) const {
     return {l_.board.x + col * l_.cell, l_.board.y + row * l_.cell, l_.cell, l_.cell};
 }
 
+int Renderer::piece_asset_index(chess::Piece piece) {
+    if (piece == chess::Piece::NONE) return -1;
+    const int type = static_cast<int>(piece.type());
+    if (type < 0 || type >= 6) return -1;
+    return (piece.color() == chess::Color::WHITE ? 0 : 6) + type;
+}
+
+void Renderer::load_piece_assets() {
+    if (assets_attempted_) return;
+    assets_attempted_ = true;
+
+    for (std::size_t i = 0; i < pieces_.size(); ++i) {
+        const std::string path = asset_dir_ + "/" + kPieceFiles[i];
+        std::ifstream in(path, std::ios::binary);
+        if (!in) continue;
+
+        std::vector<std::uint8_t> bytes(
+            (std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (bytes.size() != kPiecePlaneBytes * 2U) continue;
+
+        auto& bitmap = pieces_[i];
+        bitmap.gray.assign(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(kPiecePlaneBytes));
+        bitmap.alpha.assign(bytes.begin() + static_cast<std::ptrdiff_t>(kPiecePlaneBytes), bytes.end());
+        bitmap.loaded = true;
+    }
+}
+
+void Renderer::rebuild_piece_cache() {
+    piece_px_ = std::max(16, std::min(l_.cell, l_.cell * 92 / 100));
+    const std::size_t target_bytes =
+        static_cast<std::size_t>(piece_px_) * static_cast<std::size_t>(piece_px_);
+
+    for (auto& bitmap : pieces_) {
+        bitmap.scaled_gray.clear();
+        bitmap.scaled_alpha.clear();
+        if (!bitmap.loaded) continue;
+
+        bitmap.scaled_gray.resize(target_bytes);
+        bitmap.scaled_alpha.resize(target_bytes);
+
+        for (int y = 0; y < piece_px_; ++y) {
+            const int sy = y * kPieceSourceSize / piece_px_;
+            for (int x = 0; x < piece_px_; ++x) {
+                const int sx = x * kPieceSourceSize / piece_px_;
+                const std::size_t src =
+                    static_cast<std::size_t>(sy) * kPieceSourceSize + static_cast<std::size_t>(sx);
+                const std::size_t dst =
+                    static_cast<std::size_t>(y) * piece_px_ + static_cast<std::size_t>(x);
+                bitmap.scaled_gray[dst] = bitmap.gray[src];
+                bitmap.scaled_alpha[dst] = bitmap.alpha[src];
+            }
+        }
+    }
+}
+
 void Renderer::draw_piece(KBRect cell, chess::Piece piece) {
     if (piece == chess::Piece::NONE) return;
 
+    const int asset = piece_asset_index(piece);
+    if (asset >= 0) {
+        const auto& bitmap = pieces_[static_cast<std::size_t>(asset)];
+        const std::size_t expected =
+            static_cast<std::size_t>(piece_px_) * static_cast<std::size_t>(piece_px_);
+        if (bitmap.loaded && bitmap.scaled_gray.size() == expected &&
+            bitmap.scaled_alpha.size() == expected) {
+            const int x = cell.x + (cell.w - piece_px_) / 2;
+            const int y = cell.y + (cell.h - piece_px_) / 2;
+            kb_blit_gray8_alpha(kb_, x, y, bitmap.scaled_gray.data(), bitmap.scaled_alpha.data(),
+                                piece_px_, piece_px_, piece_px_);
+            return;
+        }
+    }
+
+    // Deliberately boring emergency fallback: if packaged artwork is absent
+    // or corrupt, the game remains playable and diagnostics can identify the
+    // packaging failure instead of presenting an empty board.
     const int cx = cell.x + cell.w / 2;
     const int cy = cell.y + cell.h / 2;
     const int radius = std::max(8, cell.w * 31 / 100);
@@ -220,7 +309,7 @@ void Renderer::draw_footer(const UiModel& model) {
     draw_button(l_.buttons[0], "NEW", true);
     draw_button(l_.buttons[1], "UNDO", model.can_undo);
     draw_button(l_.buttons[2], "DRAW", model.can_claim_draw);
-    draw_button(l_.buttons[3], "RESIGN", true);
+    draw_button(l_.buttons[3], "RESIGN", model.can_resign);
     draw_button(l_.buttons[4], "EXIT", true);
 }
 
