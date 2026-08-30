@@ -5,6 +5,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <unistd.h>
@@ -142,6 +143,7 @@ class App {
         m.last_move_mask = session_.last_move_mask();
         m.can_undo = session_.can_undo() && !pending_undo_;
         m.can_claim_draw = session_.can_claim_current();
+        m.can_resign = !session_.ended() && session_.human_turn();
         m.engine_thinking = engine_.state() == UciEngine::State::SEARCHING ||
                             engine_.state() == UciEngine::State::STOPPING;
         m.engine_available = session_.mode() == PlayMode::LOCAL_TWO_PLAYER || engine_.alive();
