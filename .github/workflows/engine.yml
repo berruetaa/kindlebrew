@@ -386,12 +386,13 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg \
-                  packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
+                  packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg \
+                  packages/chess/artifacts/chess_2.0.0_kindlehf.kpkg
           if git diff --cached --quiet; then
             echo 'Generated packages unchanged.'
             exit 0
           fi
-          git commit -m 'build: package KBGE reference titles'
+          git commit -m 'build: package KBGE titles'
           branch="${GITHUB_REF_NAME}"
           for attempt in 1 2 3; do
             if git pull --rebase origin "$branch" && git push origin "HEAD:$branch"; then
@@ -410,3 +411,7 @@ jobs:
           path: |
             engine/build/kindle/inklab
             games/ink2048/build/kindle/ink2048
+            games/inkchess/build/kindle/inkchess
+            build/stockfish-kindlehf
+            games/inkchess/build/assets/*.r8a8
+            packages/chess/artifacts/chess_2.0.0_kindlehf.kpkg
