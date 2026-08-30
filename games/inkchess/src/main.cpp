@@ -1,4 +1,5 @@
 #include <array>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,42 @@
 #include "save_game.hpp"
 #include "uci_engine.hpp"
 
+#ifdef INKCHESS_QA_LOG
+namespace {
+
+constexpr std::size_t kQaLogLimit = 512U * 1024U;
+
+void inkchess_qa_logf(const char* format, ...) {
+    static std::size_t emitted = 0;
+    if (!format || emitted >= kQaLogLimit) return;
+
+    char message[896]{};
+    va_list args;
+    va_start(args, format);
+    const int body = std::vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    if (body < 0) return;
+
+    char line[1024]{};
+    const int formatted = std::snprintf(line, sizeof(line), "inkchess-qa: %s", message);
+    if (formatted <= 0) return;
+
+    std::size_t length = static_cast<std::size_t>(formatted);
+    if (length >= sizeof(line)) length = sizeof(line) - 1U;
+    const std::size_t remaining = kQaLogLimit - emitted;
+    if (length > remaining) length = remaining;
+    if (length == 0) return;
+
+    emitted += std::fwrite(line, 1, length, stderr);
+}
+
+}  // namespace
+
+#define INKCHESS_QA_LOGF(...) inkchess_qa_logf(__VA_ARGS__)
+#else
+#define INKCHESS_QA_LOGF(...) do { } while (false)
+#endif
+
 namespace inkchess {
 
 namespace {
@@ -24,7 +61,10 @@ constexpr int TIMER_SETTLE = 100;
 constexpr int TIMER_ENGINE_GUARD = 101;
 constexpr int ENGINE_FD_ID = 200;
 constexpr unsigned SETTLE_MS = 520;
-constexpr unsigned ENGINE_HANDSHAKE_TIMEOUT_MS = 7000;
+/* Stockfish 18's cold UCI startup takes about 12 seconds on MT8110 while its
+ * embedded NNUE data is initialized.  Keep a bounded guard with enough room
+ * for slower cold storage instead of treating a healthy engine as dead. */
+constexpr unsigned ENGINE_HANDSHAKE_TIMEOUT_MS = 30000;
 constexpr unsigned ENGINE_SYNC_TIMEOUT_MS = 5000;
 constexpr unsigned ENGINE_STOP_TIMEOUT_MS = 5000;
 
@@ -89,6 +129,7 @@ class App {
     void on_event(const KBEvent& ev) {
         switch (ev.type) {
             case KB_EVENT_TAP:
+            case KB_EVENT_DOUBLE_TAP:
                 handle_tap(ev.x, ev.y);
                 break;
 
@@ -281,10 +322,14 @@ class App {
         need_engine_newgame_ = true;
         runtime_message_.clear();
         arm_engine_guard(ENGINE_HANDSHAKE_TIMEOUT_MS);
+        INKCHESS_QA_LOGF("engine start pid=%ld state=%d\n",
+                         static_cast<long>(engine_.pid()), static_cast<int>(engine_.state()));
         return true;
     }
 
     void fail_engine(const char* reason, bool allow_restart) {
+        INKCHESS_QA_LOGF("engine fail reason=%s state=%d suspended=%d restart=%d\n",
+                         reason, static_cast<int>(engine_.state()), suspended_, allow_restart);
         cancel_engine_guard();
         if (engine_watch_active_) {
             (void)kb_unwatch_fd(kb_, ENGINE_FD_ID);
@@ -312,6 +357,11 @@ class App {
     }
 
     void service_engine() {
+        INKCHESS_QA_LOGF("service state=%d alive=%d synced=%d need_new=%d ready=%d "
+                         "suspended=%d undo=%d engine_turn=%d\n",
+                         static_cast<int>(engine_.state()), engine_.alive(), engine_synced_,
+                         need_engine_newgame_, engine_.new_game_ready(), suspended_, pending_undo_,
+                         session_.engine_turn());
         if (suspended_ || pending_undo_ || session_.ended() ||
             session_.mode() == PlayMode::LOCAL_TWO_PLAYER || !engine_.alive()) {
             return;
@@ -326,6 +376,7 @@ class App {
             engine_synced_ = true;
             engine_restart_attempts_ = 0;
             cancel_engine_guard();
+            INKCHESS_QA_LOGF("engine synchronized\n");
         }
 
         if (need_engine_newgame_ && engine_.state() == UciEngine::State::IDLE) {
@@ -335,6 +386,8 @@ class App {
                 fail_engine("new game sync", true);
                 return;
             }
+            INKCHESS_QA_LOGF("new-game sync requested state=%d\n",
+                             static_cast<int>(engine_.state()));
             arm_engine_guard(ENGINE_SYNC_TIMEOUT_MS);
             return;
         }
@@ -356,15 +409,22 @@ class App {
             fail_engine("search start", true);
             return;
         }
+        INKCHESS_QA_LOGF("search started state=%d movetime=%u\n",
+                         static_cast<int>(engine_.state()), think);
         arm_engine_guard(think + 5000U);
         renderer_.draw_interaction(model(), 0, KB_REFRESH_UI);
     }
 
     void handle_engine_fd(unsigned flags) {
         if (!engine_watch_active_) return;
+        const bool was_synced = engine_synced_;
+        INKCHESS_QA_LOGF("fd flags=0x%x state-before=%d synced=%d\n",
+                         flags, static_cast<int>(engine_.state()), engine_synced_);
 
         bool ok = true;
         if (flags & KB_FD_READABLE) ok = engine_.drain();
+        INKCHESS_QA_LOGF("fd drained ok=%d state-after=%d ready=%d\n",
+                         ok, static_cast<int>(engine_.state()), engine_.new_game_ready());
 
         if (!ok) {
             fail_engine("stdout closed", true);
@@ -432,6 +492,12 @@ class App {
         }
 
         service_engine();
+        if (!was_synced && engine_synced_ && engine_.state() == UciEngine::State::IDLE) {
+            // Human White has no immediate engine search to redraw the footer.
+            // Clear the visible ENGINE STARTING state as soon as sync completes.
+            renderer_.draw_interaction(model(), 0, KB_REFRESH_UI);
+            INKCHESS_QA_LOGF("startup status redrawn\n");
+        }
     }
 
     void handle_timer(int id) {
@@ -446,6 +512,8 @@ class App {
 
         if (id == TIMER_ENGINE_GUARD) {
             engine_guard_armed_ = false;
+            INKCHESS_QA_LOGF("engine guard fired state=%d alive=%d\n",
+                             static_cast<int>(engine_.state()), engine_.alive());
             if (engine_.alive() && engine_.state() != UciEngine::State::IDLE) {
                 fail_engine("timeout", true);
                 renderer_.draw_full(model(), KB_REFRESH_CLEAN);
@@ -454,18 +522,58 @@ class App {
     }
 
     void handle_suspend() {
+        INKCHESS_QA_LOGF("suspend state=%d\n", static_cast<int>(engine_.state()));
         suspended_ = true;
         save_now();
         settle_mask_ = 0;
         (void)kb_timer_cancel(kb_, TIMER_SETTLE);
+        cancel_engine_guard();
 
         if (engine_.state() == UciEngine::State::SEARCHING) {
-            if (engine_.stop()) arm_engine_guard(ENGINE_STOP_TIMEOUT_MS);
+            // STOPPING consumes the stale bestmove without exposing it. Do not
+            // run a timeout while the application is suspended; resume will
+            // rearm a fresh bounded guard after the process can make progress.
+            (void)engine_.stop();
         }
     }
 
     void handle_resume() {
+        INKCHESS_QA_LOGF("resume state=%d alive=%d\n",
+                         static_cast<int>(engine_.state()), engine_.alive());
         suspended_ = false;
+
+        const bool needs_engine = session_.mode() != PlayMode::LOCAL_TWO_PLAYER && !session_.ended();
+        if (needs_engine && !engine_.alive()) {
+            engine_restart_attempts_ = 0;
+            (void)start_engine();
+        } else if (engine_.alive()) {
+            switch (engine_.state()) {
+                case UciEngine::State::WAIT_UCIOK:
+                case UciEngine::State::WAIT_READY_STARTUP:
+                    arm_engine_guard(ENGINE_HANDSHAKE_TIMEOUT_MS);
+                    break;
+                case UciEngine::State::WAIT_READY_NEWGAME:
+                    arm_engine_guard(ENGINE_SYNC_TIMEOUT_MS);
+                    break;
+                case UciEngine::State::STOPPING:
+                    arm_engine_guard(ENGINE_STOP_TIMEOUT_MS);
+                    break;
+                case UciEngine::State::SEARCHING:
+                    if (engine_.stop()) {
+                        arm_engine_guard(ENGINE_STOP_TIMEOUT_MS);
+                    } else if (!engine_.alive() && needs_engine) {
+                        engine_restart_attempts_ = 0;
+                        (void)start_engine();
+                    }
+                    break;
+                case UciEngine::State::IDLE:
+                    cancel_engine_guard();
+                    break;
+                case UciEngine::State::DEAD:
+                    break;
+            }
+        }
+
         renderer_.draw_full(model(), KB_REFRESH_CLEAN);
         service_engine();
     }
