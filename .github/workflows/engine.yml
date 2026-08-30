@@ -173,6 +173,37 @@ jobs:
             CROSS_TC=arm-kindlehf-linux-gnueabihf \
             CC="${prefix}gcc" AR="${prefix}ar" RANLIB="${prefix}ranlib" STRIP="${prefix}strip"
 
+      - name: Build pinned Stockfish 18 for kindlehf
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit='cb3d4ee9b47d0c5aae855b12379378ea1439675c'
+          rm -rf build/stockfish-src
+          git clone https://github.com/official-stockfish/Stockfish.git build/stockfish-src
+          git -C build/stockfish-src checkout --detach "$commit"
+          test "$(git -C build/stockfish-src rev-parse HEAD)" = "$commit"
+
+          make -C build/stockfish-src/src -j2 build \
+            ARCH=armv7 COMP=gcc \
+            COMPCXX=arm-kindlehf-linux-gnueabihf-g++ \
+            EXTRALDFLAGS='-static-libstdc++ -static-libgcc -Wl,-Bstatic -latomic -Wl,-Bdynamic'
+
+          cp build/stockfish-src/src/stockfish build/stockfish-kindlehf
+          arm-kindlehf-linux-gnueabihf-strip --strip-unneeded build/stockfish-kindlehf
+
+          file build/stockfish-kindlehf
+          arm-kindlehf-linux-gnueabihf-readelf -h build/stockfish-kindlehf | grep -E 'Class:|Machine:'
+          arm-kindlehf-linux-gnueabihf-readelf -d build/stockfish-kindlehf | tee /tmp/stockfish-needed.txt
+          ! grep -Eq 'libstdc\+\+|libgcc|libatomic' /tmp/stockfish-needed.txt
+
+          sysroot="$(arm-kindlehf-linux-gnueabihf-g++ -print-sysroot)"
+          printf 'uci\nisready\nposition startpos\neval\nquit\n' \
+            | qemu-arm -L "$sysroot" build/stockfish-kindlehf \
+            > /tmp/stockfish-smoke.txt
+          grep -F 'uciok' /tmp/stockfish-smoke.txt
+          grep -F 'readyok' /tmp/stockfish-smoke.txt
+          grep -F 'NNUE derived piece values' /tmp/stockfish-smoke.txt
+
       - name: Cross-build engine and reference games
         shell: bash
         run: |
