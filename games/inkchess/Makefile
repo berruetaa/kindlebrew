@@ -69,7 +69,7 @@ test: all
 
 $(ASSET_STAMP): $(ASSET_TOOL) $(addprefix $(GNOME_ASSET_SRC)/,$(addsuffix .svg,$(ASSET_NAMES))) | $(ASSET_BUILD)
 	python3 $(ASSET_TOOL) --src $(GNOME_ASSET_SRC) --out $(ASSET_BUILD)
-	@for f in $(ASSET_FILES); do test -s "$f"; test "$(wc -c < "$f")" -eq 32768; done
+	@for f in $(ASSET_FILES); do test -s "$$f"; test "$$(wc -c < "$$f")" -eq 32768; done
 	touch $@
 
 assets: $(ASSET_STAMP)
@@ -90,7 +90,7 @@ $(KINDLE_BUILD)/inkchess: $(APP_SRC) src/renderer.hpp src/chess_session.hpp src/
 
 kindle: $(KINDLE_BUILD)/inkchess
 	file $(KINDLE_BUILD)/inkchess
-	@for f in $(ASSET_FILES); do test -s "$f"; done
+	@for f in $(ASSET_FILES); do test -s "$$f"; done
 
 clean:
 	rm -rf build
