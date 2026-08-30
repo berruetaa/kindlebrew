@@ -154,6 +154,26 @@ static void test_fide_draw_policy() {
     play(repetition, "f6g8");
     assert(terminal_state(repetition).reason == TerminalReason::FIVEFOLD_REPETITION);
 
+    // The move creating the fifth occurrence is automatic, not an intended
+    // threefold claim. The application must commit it before ending the game.
+    {
+        Board fivefold;
+        for (int cycle_no = 0; cycle_no < 3; ++cycle_no) {
+            play(fivefold, "g1f3");
+            play(fivefold, "g8f6");
+            play(fivefold, "f3g1");
+            play(fivefold, "f6g8");
+        }
+        play(fivefold, "g1f3");
+        play(fivefold, "g8f6");
+        play(fivefold, "f3g1");
+        const Move final = legal_uci(fivefold, "f6g8");
+        assert(final != Move::NO_MOVE);
+        assert(!draw_claims_after_move(fivefold, final).any());
+        fivefold.makeMove(final);
+        assert(terminal_state(fivefold).reason == TerminalReason::FIVEFOLD_REPETITION);
+    }
+
     {
         Board fifty("7k/8/8/8/8/8/8/R6K w - - 100 51");
         assert(current_draw_claims(fifty).fifty_move_rule);
@@ -165,12 +185,33 @@ static void test_fide_draw_policy() {
         assert(terminal_state(seventy_five).reason == TerminalReason::SEVENTY_FIVE_MOVES);
     }
 
+    // The 150th halfmove is automatic and must not open a 50-move claim UI.
+    {
+        Board before_75("7k/8/8/8/8/8/8/R6K w - - 149 75");
+        const Move final = legal_uci(before_75, "a1a2");
+        assert(final != Move::NO_MOVE);
+        assert(!draw_claims_after_move(before_75, final).any());
+        before_75.makeMove(final);
+        assert(terminal_state(before_75).reason == TerminalReason::SEVENTY_FIVE_MOVES);
+    }
+
     // Checkmate takes precedence over the 75-move automatic draw.
     {
         Board mate("7k/6Q1/5K2/8/8/8/8/8 b - - 150 76");
         auto terminal = terminal_state(mate);
         assert(terminal.reason == TerminalReason::CHECKMATE);
         assert(terminal.result == GameResult::LOSE);
+    }
+
+
+    // The mating 150th halfmove remains mate, not a claim or automatic draw.
+    {
+        Board before_mate("7k/8/5KQ1/8/8/8/8/8 w - - 149 75");
+        const Move mate = legal_uci(before_mate, "g6g7");
+        assert(mate != Move::NO_MOVE);
+        assert(!draw_claims_after_move(before_mate, mate).any());
+        before_mate.makeMove(mate);
+        assert(terminal_state(before_mate).reason == TerminalReason::CHECKMATE);
     }
 }
 

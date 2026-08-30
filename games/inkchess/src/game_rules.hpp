@@ -76,6 +76,15 @@ struct DrawClaims {
     }
     chess::Board after = board;
     after.makeMove(move);
+
+    // A claim may not intercept a move that ends the game automatically.
+    // This is especially important at the overlapping thresholds: the fifth
+    // occurrence is also a threefold occurrence, and 150 halfmoves also
+    // satisfy the 50-move claim. Mate/stalemate keep their precedence through
+    // terminal_state().
+    if (terminal_state(after).reason != TerminalReason::NONE) {
+        return {};
+    }
     return current_draw_claims(after);
 }
 
