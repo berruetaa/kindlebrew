@@ -11,9 +11,15 @@
       "artifacts": [
         {
           "url": "repo/packages/gambatte-k2/artifacts/gambatte-k2_1.0.0_kindlehf.kpkg",
-          "version": [1, 0, 0],
+          "version": [
+            1,
+            0,
+            0
+          ],
           "dependencies": [],
-          "supported_platforms": ["kindlehf"]
+          "supported_platforms": [
+            "kindlehf"
+          ]
         }
       ]
     },
@@ -24,9 +30,15 @@
       "artifacts": [
         {
           "url": "repo/packages/wordle/artifacts/wordle_1.5.0_kindlehf.kpkg",
-          "version": [1, 5, 0],
+          "version": [
+            1,
+            5,
+            0
+          ],
           "dependencies": [],
-          "supported_platforms": ["kindlehf"]
+          "supported_platforms": [
+            "kindlehf"
+          ]
         }
       ]
     },
@@ -37,9 +49,15 @@
       "artifacts": [
         {
           "url": "repo/packages/chess/artifacts/chess_1.1.0_kindlehf.kpkg",
-          "version": [1, 1, 0],
+          "version": [
+            1,
+            1,
+            0
+          ],
           "dependencies": [],
-          "supported_platforms": ["kindlehf"]
+          "supported_platforms": [
+            "kindlehf"
+          ]
         }
       ]
     },
@@ -50,9 +68,15 @@
       "artifacts": [
         {
           "url": "repo/packages/mines/artifacts/mines_1.1.0_kindlehf.kpkg",
-          "version": [1, 1, 0],
+          "version": [
+            1,
+            1,
+            0
+          ],
           "dependencies": [],
-          "supported_platforms": ["kindlehf"]
+          "supported_platforms": [
+            "kindlehf"
+          ]
         }
       ]
     },
@@ -62,10 +86,16 @@
       "description": "On-demand SSH/SFTP server over Kindle Wi-Fi with a Start/Stop UI, device-aware Dropbear binaries and optional keep-awake mode.",
       "artifacts": [
         {
-          "url": "https://raw.githubusercontent.com/akshaylahudkar/dropbear-ssh/main/packages/dropbear-ssh/artifacts/dropbear-ssh_0.1.17_kindlehf.kpkg",
-          "version": [0, 1, 17],
+          "url": "https://nealing.net/packages/dropbear-ssh/artifacts/dropbear-ssh_0.1.17_kindlehf.kpkg",
+          "version": [
+            0,
+            1,
+            17
+          ],
           "dependencies": [],
-          "supported_platforms": ["kindlehf"]
+          "supported_platforms": [
+            "kindlehf"
+          ]
         }
       ]
     }
