@@ -197,9 +197,27 @@ jobs:
           ! grep -F '(NEEDED)' /tmp/stockfish-needed.txt
           file build/stockfish-kindlehf | grep -F 'statically linked'
 
+          cat > /tmp/arm-static-smoke.c <<'EOF'
+          #include <stdio.h>
+          int main(void) { puts("arm-static-ok"); return 0; }
+          EOF
+          arm-kindlehf-linux-gnueabihf-gcc -static /tmp/arm-static-smoke.c -o /tmp/arm-static-smoke
+          qemu-arm -cpu cortex-a7 /tmp/arm-static-smoke | grep -F 'arm-static-ok'
+
+          set +e
           printf 'uci\nisready\nposition startpos\neval\nquit\n' \
-            | qemu-arm build/stockfish-kindlehf \
-            > /tmp/stockfish-smoke.txt
+            | qemu-arm -cpu cortex-a7 -strace build/stockfish-kindlehf \
+            > /tmp/stockfish-smoke.txt 2> /tmp/stockfish-strace.txt
+          stockfish_rc=$?
+          set -e
+          if [ "$stockfish_rc" -ne 0 ]; then
+            echo "Stockfish qemu smoke failed with rc=$stockfish_rc"
+            echo "--- stdout ---"
+            cat /tmp/stockfish-smoke.txt || true
+            echo "--- strace tail ---"
+            tail -n 160 /tmp/stockfish-strace.txt || true
+            exit "$stockfish_rc"
+          fi
           grep -F 'uciok' /tmp/stockfish-smoke.txt
           grep -F 'readyok' /tmp/stockfish-smoke.txt
           grep -F 'Final evaluation' /tmp/stockfish-smoke.txt
