@@ -6,12 +6,13 @@ if [ "${1:-}" = "upgrade" ]; then
   exit 0
 fi
 
-TARGET="/mnt/us/extensions/gnomegames"
-DOC="/mnt/us/documents/GnomeChess.sh"
-OTHER="/mnt/us/documents/GnomeMines.sh"
-
-rm -f "$DOC"
-if [ ! -e "$OTHER" ] && [ -f "$TARGET/.kindlebrew-managed" ]; then
-  rm -rf "$TARGET" "$TARGET.kpm-new"
+if [ -f "library-install.sh" ]; then
+  sh "library-install.sh" uninstall
+else
+  rm -f "/mnt/us/documents/Ink-Chess.sh"
+  rm -rf "/mnt/us/documents/Ink-Chess.sh.sdr"
 fi
-echo "GNOME Chess removed."
+
+rm -rf "/mnt/us/extensions/kindlebrew-chess"
+
+echo "Ink Chess removed. Your save in /mnt/us/kindlebrew-data/chess is intentionally kept."
