@@ -44,7 +44,6 @@ def rasterize(src: pathlib.Path, dst: pathlib.Path) -> None:
                 "--format=png",
                 f"--width={SIZE}",
                 f"--height={SIZE}",
-                "--keep-aspect-ratio",
                 "--output",
                 tmp.name,
                 str(src),
