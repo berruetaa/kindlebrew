@@ -11,13 +11,14 @@ On the Kindle home screen search bar:
 ;kpm update
 ```
 
-Install games directly by package ID:
+Install packages directly by package ID:
 
 ```text
 ;kpm install gambatte-k2
 ;kpm install wordle
 ;kpm install chess
 ;kpm install mines
+;kpm install dropbear-ssh
 ```
 
 `https://ve.uy/repo` is the stable public entrypoint. It currently resolves to this repository's `manifest.json`, so the backend can move without requiring users to reconfigure KPM.
@@ -48,9 +49,32 @@ GNOME Mines / classic Minesweeper from the same GnomeGames4Kindle v1.1 release, 
 
 Upstream: https://github.com/crazy-electron/GnomeGames4Kindle
 
+### Dropbear SSH
+
+On-demand SSH/SFTP server over the Kindle's existing Wi-Fi connection. Kindlebrew indexes upstream `dropbear-ssh` v0.1.17 directly instead of mirroring its binaries. The package provides a Kindle UI to start/stop the server, shows the connection command and generated password, can keep Wi-Fi reachable while the Kindle would otherwise suspend, and selects the appropriate upstream binary set from the running kernel.
+
+Default SSH port: `2022`.
+
+After installation:
+
+```text
+;kpm launch dropbear-ssh
+```
+
+Then use the connection command shown by the app, for example:
+
+```text
+ssh -p 2022 root@192.168.x.x
+```
+
+The package uses a generated root-equivalent master password. Treat it as a root password and only enable the server on networks you trust. Keeping the Kindle reachable while asleep prevents normal suspend and therefore increases battery use.
+
+Upstream: https://github.com/akshaylahudkar/dropbear-ssh
+
 ## Repository layout
 
 - `manifest.json` — KPM repository manifest.
-- `package-src/<package>/` — KPM metadata and lifecycle scripts.
-- `packages/<package>/artifacts/` — reproducibly built `.kpkg` artifacts.
+- `package-src/<package>/` — KPM metadata and lifecycle scripts maintained by Kindlebrew.
+- `packages/<package>/artifacts/` — Kindlebrew-built `.kpkg` artifacts.
+- External upstream KPM packages may be indexed by absolute artifact URL instead of being mirrored.
 - `.github/workflows/` — package builders and validation.
