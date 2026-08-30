@@ -1,0 +1,20 @@
+Ink Chess and Kindlebrew Game Engine are distributed under GPL-3.0-or-later.
+
+Corresponding source:
+https://github.com/berruetaa/kindlebrew/tree/feat/kbge-chess/games/inkchess
+https://github.com/berruetaa/kindlebrew/tree/feat/kbge-chess/engine
+
+The shipped Ink Chess binary statically links FBInk.
+Pinned FBInk source:
+https://github.com/KindleModding/FBInk/tree/76557104a55ea163769464e59668e26f6af299ef
+
+Chess rules use chess-library 0.9.4 (MIT), pinned at:
+https://github.com/Disservin/chess-library/tree/53e6a841dcda7059a2af363d85f785ef1817304a
+
+The shipped Stockfish 18 executable is built from the exact GPLv3 source commit:
+https://github.com/official-stockfish/Stockfish/tree/cb3d4ee9b47d0c5aae855b12379378ea1439675c
+
+Piece artwork is GNOME Chess's default "simple" set and is redistributed under
+the W3C Software Notice and License included with the package. The original
+SVG sources are in games/inkchess/assets/gnome-simple; package payloads contain
+only build-time rasterized Gray8 + alpha assets.
