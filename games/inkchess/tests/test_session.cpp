@@ -1,4 +1,5 @@
 #include <cassert>
+#include <initializer_list>
 #include <string>
 
 #include "../src/chess_session.hpp"
@@ -7,6 +8,24 @@ using namespace inkchess;
 
 static int sq(char file, char rank) {
     return (rank - '1') * 8 + (file - 'a');
+}
+
+static bool restore_moves(ChessSession& game, PlayMode mode,
+                          std::initializer_list<const char*> moves) {
+    SaveData save;
+    save.mode = mode;
+    save.elo = 1600;
+    save.outcome = OutcomeOverride::NONE;
+
+    chess::Board board;
+    for (const char* text : moves) {
+        const chess::Move move = chess::uci::uciToMove(board, text);
+        if (!board.isLegal(move)) return false;
+        save.moves.emplace_back(text);
+        board.makeMove(move);
+    }
+    save.fen = board.getFen();
+    return game.restore(save);
 }
 
 int main() {
@@ -99,6 +118,49 @@ int main() {
     auto promoted = pgame.choose_promotion(chess::PieceType::KNIGHT);
     assert(promoted.moved);
     assert(pgame.uci_history().back() == "b7a8n");
+
+    // A check marker lives on an unchanged king square. It must be dirty both
+    // when a line check appears and when a blocking move removes it.
+    ChessSession checked;
+    assert(restore_moves(checked, PlayMode::LOCAL_TWO_PLAYER, {"e2e4", "f7f5"}));
+    checked.tap_square(sq('d', '1'));
+    const auto give_check = checked.tap_square(sq('h', '5'));
+    assert(give_check.moved);
+    assert(give_check.dirty_squares & (1ULL << sq('e', '8')));
+    checked.tap_square(sq('g', '7'));
+    const auto block_check = checked.tap_square(sq('g', '6'));
+    assert(block_check.moved);
+    assert(block_check.dirty_squares & (1ULL << sq('e', '8')));
+    const std::uint64_t undo_check = checked.undo();
+    assert(undo_check & (1ULL << sq('e', '8')));
+
+    // If Stockfish delivered mate, undo two plies so control returns to the
+    // human. If the human delivered mate, only their mating ply is removed.
+    ChessSession engine_mate;
+    assert(restore_moves(engine_mate, PlayMode::HUMAN_WHITE,
+                         {"f2f3", "e7e5", "g2g4", "d8h4"}));
+    assert(engine_mate.ended() && engine_mate.can_undo());
+    assert(engine_mate.undo() != 0);
+    assert(engine_mate.uci_history().size() == 2);
+    assert(!engine_mate.ended() && engine_mate.human_turn());
+
+    ChessSession human_mate;
+    assert(restore_moves(human_mate, PlayMode::HUMAN_WHITE,
+                         {"e2e4", "e7e5", "d1h5", "b8c6", "f1c4", "g8f6", "h5f7"}));
+    assert(human_mate.ended() && human_mate.can_undo());
+    assert(human_mate.undo() != 0);
+    assert(human_mate.uci_history().size() == 6);
+    assert(!human_mate.ended() && human_mate.human_turn());
+
+    // Resignation and accepted draw claims do not create a move. Disabling
+    // undo avoids silently deleting an unrelated previous ply.
+    ChessSession resigned;
+    assert(restore_moves(resigned, PlayMode::HUMAN_WHITE, {"e2e4", "e7e5"}));
+    const std::string before_resign = resigned.board().getFen();
+    resigned.resign();
+    assert(resigned.ended() && !resigned.can_undo());
+    assert(resigned.undo() == 0);
+    assert(resigned.board().getFen() == before_resign);
 
     return 0;
 }

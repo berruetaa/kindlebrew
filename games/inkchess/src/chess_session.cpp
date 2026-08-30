@@ -26,6 +26,13 @@ const char* terminal_label(TerminalReason reason) {
     return "";
 }
 
+std::uint64_t check_indicator_mask(const chess::Board& board) {
+    if (!board.inCheck()) return 0;
+    const chess::Square king = board.kingSq(board.sideToMove());
+    if (king == chess::Square::NO_SQ) return 0;
+    return 1ULL << king.index();
+}
+
 }  // namespace
 
 ChessSession::ChessSession() = default;
@@ -94,7 +101,10 @@ SaveData ChessSession::save_data() const {
 }
 
 bool ChessSession::human_turn() const noexcept {
-    if (ended()) return false;
+    return !ended() && side_to_move_is_human();
+}
+
+bool ChessSession::side_to_move_is_human() const noexcept {
     if (mode_ == PlayMode::LOCAL_TWO_PLAYER) return true;
     if (mode_ == PlayMode::HUMAN_WHITE) return board_.sideToMove() == chess::Color::WHITE;
     return board_.sideToMove() == chess::Color::BLACK;
@@ -110,9 +120,9 @@ bool ChessSession::ended() const {
 }
 
 bool ChessSession::can_undo() const noexcept {
-    if (move_history_.empty() || outcome_ != OutcomeOverride::NONE) return !move_history_.empty();
+    if (move_history_.empty() || outcome_ != OutcomeOverride::NONE) return false;
     if (mode_ == PlayMode::LOCAL_TWO_PLAYER) return true;
-    if (engine_turn()) return true;
+    if (!side_to_move_is_human()) return true;
     return move_history_.size() >= 2;
 }
 
@@ -204,6 +214,7 @@ std::uint64_t ChessSession::commit_move(const chess::Move& move) {
     const chess::Board before = board_;
     const std::uint64_t old_ui = selection_mask();
     const std::uint64_t old_last = last_move_mask_;
+    const std::uint64_t old_check = check_indicator_mask(before);
     const std::string uci = chess::uci::moveToUci(move);
     const std::string san = chess::uci::moveToSan(board_, move);
 
@@ -218,7 +229,8 @@ std::uint64_t ChessSession::commit_move(const chess::Move& move) {
     clear_pending();
     update_last_metadata();
 
-    return old_ui | old_last | last_move_mask_ | compute_piece_diff(before, board_);
+    return old_ui | old_last | last_move_mask_ | old_check |
+           check_indicator_mask(board_) | compute_piece_diff(before, board_);
 }
 
 ChessSession::TapResult ChessSession::prepare_move(const chess::Move& move) {
@@ -364,9 +376,11 @@ std::uint64_t ChessSession::undo() {
     const chess::Board before = board_;
     const std::uint64_t old_ui = selection_mask();
     const std::uint64_t old_last = last_move_mask_;
+    const std::uint64_t old_check = check_indicator_mask(before);
     int plies = 1;
 
-    if (mode_ != PlayMode::LOCAL_TWO_PLAYER && human_turn() && move_history_.size() >= 2) {
+    if (mode_ != PlayMode::LOCAL_TWO_PLAYER && side_to_move_is_human() &&
+        move_history_.size() >= 2) {
         plies = 2;
     }
 
@@ -383,7 +397,8 @@ std::uint64_t ChessSession::undo() {
     target_mask_ = 0;
     clear_pending();
     update_last_metadata();
-    return old_ui | old_last | last_move_mask_ | compute_piece_diff(before, board_);
+    return old_ui | old_last | last_move_mask_ | old_check |
+           check_indicator_mask(board_) | compute_piece_diff(before, board_);
 }
 
 void ChessSession::resign() {

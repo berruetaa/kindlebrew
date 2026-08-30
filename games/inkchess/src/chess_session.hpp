@@ -78,6 +78,7 @@ class ChessSession {
                                                    const chess::Board& after) const;
     [[nodiscard]] std::uint64_t move_display_mask(std::string_view uci) const;
     [[nodiscard]] bool piece_is_current_side(int square) const;
+    [[nodiscard]] bool side_to_move_is_human() const noexcept;
     void select(int square);
     TapResult prepare_move(const chess::Move& move);
     std::uint64_t commit_move(const chess::Move& move);
