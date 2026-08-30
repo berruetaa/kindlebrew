@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "id": "ssh-server",
+  "name": "SSH Server (Dropbear)",
+  "author": "Matt Johnston / Kindlebrew",
+  "description": "Lightweight SSH server for jailbroken Kindles, using Dropbear 2026.94 with public-key-only authentication.",
+  "version": [2026, 94, 0],
+  "dependencies": [],
+  "supported_platforms": ["kindlehf"]
+}
