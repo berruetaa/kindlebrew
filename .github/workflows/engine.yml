@@ -210,11 +210,21 @@ jobs:
           set -euo pipefail
           make -C engine kindle FBINK_DIR=vendor/FBInk
           make -C games/ink2048 kindle ENGINE_DIR=../../engine FBINK_DIR=../../engine/vendor/FBInk
-          for bin in engine/build/kindle/inklab games/ink2048/build/kindle/ink2048; do
+          make -C games/inkchess kindle ENGINE_DIR=../../engine FBINK_DIR=../../engine/vendor/FBInk
+
+          for bin in engine/build/kindle/inklab games/ink2048/build/kindle/ink2048 games/inkchess/build/kindle/inkchess; do
             file "$bin"
             arm-kindlehf-linux-gnueabihf-readelf -h "$bin" | grep -E 'Class:|Machine:'
-            arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | grep NEEDED || true
-            ! arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | grep -q 'libfbink'
+            arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | tee /tmp/needed.txt
+            ! grep -Eq 'libfbink|libcairo|librsvg|libGL|libX11|libgtk' /tmp/needed.txt
+          done
+
+          arm-kindlehf-linux-gnueabihf-readelf -d games/inkchess/build/kindle/inkchess | tee /tmp/inkchess-needed.txt
+          ! grep -Eq 'libstdc\+\+|libgcc|libatomic' /tmp/inkchess-needed.txt
+
+          test "$(find games/inkchess/build/assets -maxdepth 1 -name '*.r8a8' -type f | wc -l)" -eq 12
+          for asset in games/inkchess/build/assets/*.r8a8; do
+            test "$(wc -c < "$asset")" -eq 32768
           done
 
       - name: Assemble InkLab KPM package
