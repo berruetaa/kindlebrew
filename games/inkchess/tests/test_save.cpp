@@ -2,7 +2,7 @@
 #include <string>
 
 #include "../src/save_game.hpp"
-#include "../third_party/chess.hpp"
+#include "../src/chess_vendor.hpp"
 
 using namespace inkchess;
 
