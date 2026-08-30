@@ -18,8 +18,17 @@ int main() {
     assert(game.selected_square() == sq('e', '2'));
     assert(game.legal_target_mask() & (1ULL << sq('e', '4')));
 
-    // Illegal target clears selection without mutating the board.
+    // A second tap on the selected piece cancels selection. On Kindle this
+    // arrives as KB_EVENT_DOUBLE_TAP when the taps are close together.
     const std::string start = game.board().getFen();
+    auto cancel = game.tap_square(sq('e', '2'));
+    assert(cancel.changed && !cancel.moved);
+    assert(game.selected_square() == -1);
+    assert(game.legal_target_mask() == 0);
+    assert(game.board().getFen() == start);
+
+    // Illegal target clears selection without mutating the board.
+    game.tap_square(sq('e', '2'));
     auto bad = game.tap_square(sq('e', '5'));
     assert(bad.changed && !bad.moved);
     assert(game.board().getFen() == start);

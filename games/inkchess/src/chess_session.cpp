@@ -253,7 +253,12 @@ ChessSession::TapResult ChessSession::tap_square(int square) {
     }
 
     if (piece_is_current_side(square)) {
-        select(square);
+        if (square == selected_square_) {
+            selected_square_ = -1;
+            target_mask_ = 0;
+        } else {
+            select(square);
+        }
         result.changed = true;
         result.dirty_squares = old_selection | selection_mask();
         return result;
