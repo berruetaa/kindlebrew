@@ -186,7 +186,7 @@ jobs:
           make -C build/stockfish-src/src -j2 build \
             ARCH=armv7 COMP=gcc \
             COMPCXX=arm-kindlehf-linux-gnueabihf-g++ \
-            EXTRALDFLAGS='-static-libstdc++ -static-libgcc -Wl,-Bstatic -latomic -Wl,-Bdynamic'
+            EXTRALDFLAGS='-static-libstdc++ -static-libgcc -Wl,-Bstatic -latomic -Wl,-Bdynamic -Wl,--as-needed'
 
           cp build/stockfish-src/src/stockfish build/stockfish-kindlehf
           arm-kindlehf-linux-gnueabihf-strip --strip-unneeded build/stockfish-kindlehf
