@@ -88,6 +88,8 @@ class Renderer {
     static int fit_text(const std::string& text, int max_w, int max_h, int max_scale);
     static int display_to_square(bool flip, int row, int col);
     static void square_to_display(bool flip, int square, int* row, int* col);
+    static bool same_header(const UiModel& a, const UiModel& b);
+    static bool same_footer(const UiModel& a, const UiModel& b);
 
     bool flipped(const UiModel& model) const;
     KBRect square_rect(const UiModel& model, int square) const;
@@ -110,6 +112,8 @@ class Renderer {
     std::string asset_dir_;
     bool assets_attempted_ = false;
     int piece_px_ = 0;
+    UiModel cached_model_{};
+    bool model_cache_valid_ = false;
 };
 
 }  // namespace inkchess

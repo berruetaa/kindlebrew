@@ -101,6 +101,7 @@ void Renderer::relayout() {
 
     load_piece_assets();
     rebuild_piece_cache();
+    model_cache_valid_ = false;
 }
 
 bool Renderer::flipped(const UiModel& model) const {
@@ -119,6 +120,19 @@ void Renderer::square_to_display(bool flip, int square, int* row, int* col) {
     const int file = square % 8;
     *row = flip ? rank : 7 - rank;
     *col = flip ? 7 - file : file;
+}
+
+bool Renderer::same_header(const UiModel& a, const UiModel& b) {
+    return a.status == b.status && a.secondary == b.secondary;
+}
+
+bool Renderer::same_footer(const UiModel& a, const UiModel& b) {
+    return a.mode == b.mode &&
+           a.can_undo == b.can_undo &&
+           a.can_claim_draw == b.can_claim_draw &&
+           a.can_resign == b.can_resign &&
+           a.engine_thinking == b.engine_thinking &&
+           a.engine_available == b.engine_available;
 }
 
 KBRect Renderer::square_rect(const UiModel& model, int square) const {
@@ -230,7 +244,25 @@ void Renderer::draw_square(const UiModel& model, int square) {
     const int file = square % 8;
     const std::uint8_t bg = ((rank + file) & 1) ? 205 : 247;
 
-    kb_fill_rect(kb_, r, bg);
+    // The board frame is drawn inside l_.board. Preserve those pixels when an
+    // edge square is repainted so a partial update does not have to damage the
+    // entire 1040x1040 board merely to restore four frame strips.
+    KBRect fill = r;
+    int row = 0;
+    int col = 0;
+    square_to_display(flipped(model), square, &row, &col);
+    const int frame = std::max(3, l_.cell / 28);
+    if (row == 0) {
+        fill.y += frame;
+        fill.h -= frame;
+    }
+    if (row == 7) fill.h -= frame;
+    if (col == 0) {
+        fill.x += frame;
+        fill.w -= frame;
+    }
+    if (col == 7) fill.w -= frame;
+    kb_fill_rect(kb_, fill, bg);
 
     if (model.last_move_mask & (1ULL << square)) {
         const int inset = std::max(3, l_.cell / 22);
@@ -335,17 +367,25 @@ void Renderer::draw_full(const UiModel& model, KBRefreshMode refresh) {
     draw_board(model);
     draw_footer(model);
     draw_overlay(model);
+    cached_model_ = model;
+    model_cache_valid_ = true;
     (void)kb_present(kb_, refresh);
 }
 
 void Renderer::draw_interaction(const UiModel& model, std::uint64_t square_mask,
-                                KBRefreshMode refresh) {
-    draw_header(model);
+                                 KBRefreshMode refresh) {
+    if (!model_cache_valid_) {
+        draw_full(model, refresh);
+        return;
+    }
+
+    if (!same_header(cached_model_, model)) draw_header(model);
     for (int sq = 0; sq < 64; ++sq) {
         if (square_mask & (1ULL << sq)) draw_square(model, sq);
     }
-    draw_footer(model);
+    if (!same_footer(cached_model_, model)) draw_footer(model);
     if (model.overlay != Overlay::NONE) draw_overlay(model);
+    cached_model_ = model;
     (void)kb_present(kb_, refresh);
 }
 
