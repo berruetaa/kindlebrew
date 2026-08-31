@@ -2,6 +2,7 @@ CXX ?= g++
 # InkChess host and kindlehf build
 CPPFLAGS ?=
 CXXFLAGS ?= -O2
+INKCHESS_EXTRA_CPPFLAGS ?=
 
 ENGINE_DIR ?= ../../engine
 BUILD_DIR := build
@@ -9,7 +10,7 @@ HOST_BUILD := $(BUILD_DIR)/host
 KINDLE_BUILD := $(BUILD_DIR)/kindle
 ASSET_BUILD := $(BUILD_DIR)/assets
 
-COMMON_CPPFLAGS := -D_POSIX_C_SOURCE=200809L -Isrc -I$(ENGINE_DIR)/include
+COMMON_CPPFLAGS := -D_POSIX_C_SOURCE=200809L -Isrc -I$(ENGINE_DIR)/include $(INKCHESS_EXTRA_CPPFLAGS)
 COMMON_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror
 
 RULES_TEST := $(HOST_BUILD)/test_rules
