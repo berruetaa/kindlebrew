@@ -74,6 +74,7 @@ bool ChessSession::restore(const SaveData& save) {
     rebuilt.reset(save.mode, save.elo);
 
     for (const auto& text : save.moves) {
+        if (terminal_state(rebuilt.board_).reason != TerminalReason::NONE) return false;
         const auto move = rebuilt.legal_uci(text);
         if (!move) return false;
         const std::string san = chess::uci::moveToSan(rebuilt.board_, *move);
@@ -84,6 +85,8 @@ bool ChessSession::restore(const SaveData& save) {
     }
 
     if (rebuilt.board_.getFen() != save.fen) return false;
+    if (save.outcome != OutcomeOverride::NONE &&
+        terminal_state(rebuilt.board_).reason != TerminalReason::NONE) return false;
     rebuilt.outcome_ = save.outcome;
     rebuilt.update_last_metadata();
     *this = std::move(rebuilt);

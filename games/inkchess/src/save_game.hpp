@@ -32,4 +32,10 @@ struct SaveData {
 [[nodiscard]] std::optional<SaveData> decode_save(std::string_view bytes,
                                                   std::string* error = nullptr);
 
+// Move an invalid save aside without replacing any previous forensic copy.
+// The destination remains in the same directory and is returned on success.
+[[nodiscard]] bool quarantine_save_file(const std::string& path,
+                                        std::string* destination = nullptr,
+                                        std::string* error = nullptr);
+
 }  // namespace inkchess

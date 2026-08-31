@@ -1,4 +1,5 @@
 #include <array>
+#include <cerrno>
 #include <climits>
 #include <cstdarg>
 #include <cstdint>
@@ -90,12 +91,13 @@ class App {
 
     bool initialize() {
         if (kb_data_path(kb_, "save-v1.txt", save_path_, sizeof(save_path_)) != 0) {
-            runtime_message_ = "SAVE PATH ERROR";
+            storage_message_ = "SAVE PATH ERROR";
             return false;
         }
 
         bool restored = false;
         size_t size = 0;
+        errno = 0;
         void* raw = kb_load_file(save_path_, &size);
         if (raw) {
             std::string error;
@@ -106,9 +108,21 @@ class App {
             if (decoded && session_.restore(*decoded)) {
                 restored = true;
             } else {
-                quarantine_bad_save();
-                runtime_message_ = "BAD SAVE RESET";
+                std::string destination;
+                if (!quarantine_save_file(save_path_, &destination, &error)) {
+                    storage_message_ = "BAD SAVE PRESERVED";
+                    std::fprintf(stderr, "inkchess: invalid save could not be quarantined: %s\n",
+                                 error.c_str());
+                    return false;
+                }
+                INKCHESS_QA_LOGF("invalid save moved to %s reason=%s\n",
+                                 destination.c_str(), error.c_str());
+                storage_message_ = "BAD SAVE RESET";
             }
+        } else if (errno != ENOENT) {
+            storage_message_ = "SAVE READ FAILED";
+            std::fprintf(stderr, "inkchess: save read failed: %s\n", std::strerror(errno));
+            return false;
         }
 
         if (!restored) {
@@ -191,8 +205,10 @@ class App {
         m.engine_available = session_.mode() == PlayMode::LOCAL_TWO_PLAYER || engine_.alive();
         m.status = pending_undo_ ? "UNDO PENDING" : session_.status_text();
 
-        if (!runtime_message_.empty()) {
-            m.secondary = runtime_message_;
+        if (!storage_message_.empty()) {
+            m.secondary = storage_message_;
+        } else if (!engine_message_.empty()) {
+            m.secondary = engine_message_;
         } else if (session_.mode() != PlayMode::LOCAL_TWO_PLAYER && engine_.alive() && !engine_synced_) {
             m.secondary = "ENGINE STARTING";
         } else {
@@ -241,20 +257,17 @@ class App {
         return Overlay::NONE;
     }
 
-    void quarantine_bad_save() {
-        std::string bad = std::string(save_path_) + ".bad";
-        (void)unlink(bad.c_str());
-        (void)rename(save_path_, bad.c_str());
-    }
-
-    void save_now() {
+    bool save_now() {
         const SaveData data = session_.save_data();
         const std::string bytes = encode_save(data);
         if (kb_save_atomic(save_path_, bytes.data(), bytes.size()) != 0) {
-            runtime_message_ = "SAVE FAILED";
-        } else if (runtime_message_ == "SAVE FAILED") {
-            runtime_message_.clear();
+            storage_message_ = "SAVE FAILED";
+            return false;
         }
+        if (storage_message_ == "SAVE FAILED") {
+            storage_message_.clear();
+        }
+        return true;
     }
 
     void arm_engine_guard(unsigned delay_ms) {
@@ -304,12 +317,12 @@ class App {
     bool start_engine() {
         stop_engine();
         if (engine_path_.empty() || access(engine_path_.c_str(), X_OK) != 0) {
-            runtime_message_ = "STOCKFISH MISSING";
+            engine_message_ = "STOCKFISH MISSING";
             return false;
         }
 
         if (!engine_.start(engine_path_, session_.elo())) {
-            runtime_message_ = "ENGINE START FAILED";
+            engine_message_ = "ENGINE START FAILED";
             return false;
         }
 
@@ -319,7 +332,7 @@ class App {
                                     : next_engine_watch_id_ + 1;
         if (kb_watch_fd(kb_, watch_id, engine_.read_fd()) != 0) {
             engine_.shutdown();
-            runtime_message_ = "ENGINE WATCH FAILED";
+            engine_message_ = "ENGINE WATCH FAILED";
             return false;
         }
 
@@ -327,7 +340,7 @@ class App {
         engine_watch_active_ = true;
         engine_synced_ = false;
         need_engine_newgame_ = true;
-        runtime_message_.clear();
+        engine_message_.clear();
         arm_engine_guard(ENGINE_HANDSHAKE_TIMEOUT_MS);
         INKCHESS_QA_LOGF("engine start pid=%ld state=%d\n",
                          static_cast<long>(engine_.pid()), static_cast<int>(engine_.state()));
@@ -347,7 +360,7 @@ class App {
         engine_.shutdown();
         engine_synced_ = false;
         need_engine_newgame_ = false;
-        runtime_message_ = "ENGINE FAILED";
+        engine_message_ = "ENGINE FAILED";
 
         if (pending_undo_) {
             pending_undo_ = false;
@@ -602,7 +615,7 @@ class App {
 
         if (mode == PlayMode::LOCAL_TWO_PLAYER) {
             stop_engine();
-            runtime_message_.clear();
+            engine_message_.clear();
         } else {
             engine_restart_attempts_ = 0;
             (void)start_engine();
@@ -758,7 +771,8 @@ class App {
 
     std::string engine_path_;
     char save_path_[512]{};
-    std::string runtime_message_;
+    std::string storage_message_;
+    std::string engine_message_;
 
     bool running_ = true;
     bool suspended_ = false;

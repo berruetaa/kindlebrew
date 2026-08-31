@@ -195,7 +195,10 @@ int kb_save_atomic(const char *path, const void *data, size_t size) {
 
 void *kb_load_file(const char *path, size_t *size_out) {
     if (size_out) *size_out = 0;
-    if (!path || !*path) return NULL;
+    if (!path || !*path) {
+        errno = EINVAL;
+        return NULL;
+    }
 
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) return NULL;
@@ -227,6 +230,7 @@ void *kb_load_file(const char *path, size_t *size_out) {
             continue;
         }
         if (n < 0 && errno == EINTR) continue;
+        if (n == 0) errno = EIO;
         free(buf);
         close(fd);
         return NULL;

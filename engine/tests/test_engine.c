@@ -4,6 +4,7 @@
 #include "../src/kb_internal.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -382,6 +383,10 @@ static void test_runtime_services(void) {
     assert(memcmp(loaded, payload, size) == 0);
     kb_free(loaded);
     unlink(path);
+
+    errno = 0;
+    assert(kb_load_file(path, &size) == NULL);
+    assert(errno == ENOENT);
 
     kb_destroy(a);
     kb_destroy(b);

@@ -84,6 +84,13 @@ int main() {
     assert(restored.board().getFen() == game.board().getFen());
     assert(restored.uci_history() == game.uci_history());
 
+    ChessSession continued_after_terminal;
+    assert(!restore_moves(continued_after_terminal, PlayMode::LOCAL_TWO_PLAYER,
+                          {"g1f3", "g8f6", "f3g1", "f6g8",
+                           "g1f3", "g8f6", "f3g1", "f6g8",
+                           "g1f3", "g8f6", "f3g1", "f6g8",
+                           "g1f3", "g8f6", "f3g1", "f6g8", "e2e4"}));
+
     // Local two-player permits one-ply undo.
     restored.reset(PlayMode::LOCAL_TWO_PLAYER, 1600);
     restored.tap_square(sq('g', '1'));

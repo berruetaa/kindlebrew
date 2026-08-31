@@ -3,13 +3,19 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdint>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
 #include <limits>
 #include <sstream>
 #include <string>
 #include <utility>
 
+#include <unistd.h>
+
+#include "game_rules.hpp"
 #include "chess_vendor.hpp"
 
 namespace inkchess {
@@ -222,6 +228,10 @@ std::optional<SaveData> decode_save(std::string_view bytes, std::string* error) 
 
     chess::Board board;
     for (const auto& text : result.moves) {
+        if (terminal_state(board).reason != TerminalReason::NONE) {
+            set_error(error, "save continues after automatic game end");
+            return std::nullopt;
+        }
         const auto move = legal_uci(board, text);
         if (!move) {
             set_error(error, "save contains illegal move");
@@ -235,7 +245,65 @@ std::optional<SaveData> decode_save(std::string_view bytes, std::string* error) 
         return std::nullopt;
     }
 
+    if (result.outcome != OutcomeOverride::NONE &&
+        terminal_state(board).reason != TerminalReason::NONE) {
+        set_error(error, "save outcome conflicts with automatic game end");
+        return std::nullopt;
+    }
+
     return result;
+}
+
+bool quarantine_save_file(const std::string& path, std::string* destination,
+                          std::string* error) {
+    if (path.empty()) {
+        errno = EINVAL;
+        set_error(error, "save quarantine path invalid");
+        return false;
+    }
+
+    const long long timestamp = static_cast<long long>(std::time(nullptr));
+    const long pid = static_cast<long>(getpid());
+    for (unsigned attempt = 0; attempt < 1000U; ++attempt) {
+        std::string candidate = path + ".bad." + std::to_string(timestamp) + "." +
+                                std::to_string(pid);
+        if (attempt != 0) candidate += "." + std::to_string(attempt);
+
+        // Reserve a name with O_EXCL. rename() may then replace only our own
+        // empty placeholder, never an older corruption artifact.
+        const int placeholder = open(candidate.c_str(),
+                                     O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+        if (placeholder < 0) {
+            if (errno == EEXIST) continue;
+            set_error(error, "cannot reserve corrupt-save path: " +
+                                 std::string(std::strerror(errno)));
+            return false;
+        }
+        if (close(placeholder) != 0) {
+            const int saved_errno = errno;
+            (void)unlink(candidate.c_str());
+            errno = saved_errno;
+            set_error(error, "cannot close corrupt-save placeholder: " +
+                                 std::string(std::strerror(errno)));
+            return false;
+        }
+
+        if (rename(path.c_str(), candidate.c_str()) == 0) {
+            if (destination) *destination = candidate;
+            return true;
+        }
+
+        const int saved_errno = errno;
+        (void)unlink(candidate.c_str());
+        errno = saved_errno;
+        set_error(error, "cannot preserve corrupt save: " +
+                             std::string(std::strerror(errno)));
+        return false;
+    }
+
+    errno = EEXIST;
+    set_error(error, "too many corrupt-save artifacts");
+    return false;
 }
 
 }  // namespace inkchess
