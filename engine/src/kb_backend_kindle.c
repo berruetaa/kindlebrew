@@ -20,6 +20,7 @@
 #include <time.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -132,10 +133,12 @@ static void harden_input_fd(int fd) {
 static int run_quiet_argv(const char *file, char *const argv[]) {
     if (!file || !argv || !argv[0]) return -1;
 
+    pid_t parent = getpid();
     pid_t pid = fork();
     if (pid < 0) return -1;
 
     if (pid == 0) {
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent) _exit(126);
         int nullfd = open("/dev/null", O_RDWR);
         if (nullfd >= 0) {
             (void)dup2(nullfd, STDIN_FILENO);
@@ -333,6 +336,7 @@ static int setup_power_events(KBGame *game) {
         return -1;
     }
 
+    pid_t parent = getpid();
     pid_t pid = fork();
     if (pid < 0) {
         close(p[0]);
@@ -342,6 +346,7 @@ static int setup_power_events(KBGame *game) {
     }
 
     if (pid == 0) {
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent) _exit(126);
         close(p[0]);
         if (dup2(p[1], STDOUT_FILENO) < 0) _exit(126);
         close(p[1]);

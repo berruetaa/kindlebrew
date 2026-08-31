@@ -1,4 +1,5 @@
 #include <array>
+#include <climits>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -59,7 +60,7 @@ namespace {
 
 constexpr int TIMER_SETTLE = 100;
 constexpr int TIMER_ENGINE_GUARD = 101;
-constexpr int ENGINE_FD_ID = 200;
+constexpr int FIRST_ENGINE_FD_ID = 200;
 constexpr unsigned SETTLE_MS = 520;
 /* Stockfish 18's cold UCI startup takes about 12 seconds on MT8110 while its
  * embedded NNUE data is initialized.  Keep a bounded guard with enough room
@@ -134,7 +135,7 @@ class App {
                 break;
 
             case KB_EVENT_FD:
-                if (ev.id == ENGINE_FD_ID) handle_engine_fd(static_cast<unsigned>(ev.value));
+                handle_engine_fd(ev.id, static_cast<unsigned>(ev.value));
                 break;
 
             case KB_EVENT_TIMER:
@@ -291,8 +292,9 @@ class App {
     void stop_engine() {
         cancel_engine_guard();
         if (engine_watch_active_) {
-            (void)kb_unwatch_fd(kb_, ENGINE_FD_ID);
+            (void)kb_unwatch_fd(kb_, engine_watch_id_);
             engine_watch_active_ = false;
+            engine_watch_id_ = -1;
         }
         engine_.shutdown();
         engine_synced_ = false;
@@ -311,12 +313,17 @@ class App {
             return false;
         }
 
-        if (kb_watch_fd(kb_, ENGINE_FD_ID, engine_.read_fd()) != 0) {
+        const int watch_id = next_engine_watch_id_;
+        next_engine_watch_id_ = next_engine_watch_id_ == INT_MAX
+                                    ? FIRST_ENGINE_FD_ID
+                                    : next_engine_watch_id_ + 1;
+        if (kb_watch_fd(kb_, watch_id, engine_.read_fd()) != 0) {
             engine_.shutdown();
             runtime_message_ = "ENGINE WATCH FAILED";
             return false;
         }
 
+        engine_watch_id_ = watch_id;
         engine_watch_active_ = true;
         engine_synced_ = false;
         need_engine_newgame_ = true;
@@ -332,8 +339,9 @@ class App {
                          reason, static_cast<int>(engine_.state()), suspended_, allow_restart);
         cancel_engine_guard();
         if (engine_watch_active_) {
-            (void)kb_unwatch_fd(kb_, ENGINE_FD_ID);
+            (void)kb_unwatch_fd(kb_, engine_watch_id_);
             engine_watch_active_ = false;
+            engine_watch_id_ = -1;
         }
         engine_.mark_pipe_failure(reason);
         engine_.shutdown();
@@ -415,8 +423,12 @@ class App {
         renderer_.draw_interaction(model(), 0, KB_REFRESH_UI);
     }
 
-    void handle_engine_fd(unsigned flags) {
-        if (!engine_watch_active_) return;
+    void handle_engine_fd(int watch_id, unsigned flags) {
+        // A tap and an old engine fd can be queued by the same poll cycle. The
+        // tap may replace Stockfish before the fd event is dispatched. Unique
+        // per-child IDs make that stale event harmless even if the OS reuses
+        // the same descriptor and KBGE watch slot immediately.
+        if (!engine_watch_active_ || watch_id != engine_watch_id_) return;
         const bool was_synced = engine_synced_;
         INKCHESS_QA_LOGF("fd flags=0x%x state-before=%d synced=%d\n",
                          flags, static_cast<int>(engine_.state()), engine_synced_);
@@ -756,6 +768,8 @@ class App {
     bool engine_guard_armed_ = false;
     bool pending_undo_ = false;
     int engine_restart_attempts_ = 0;
+    int engine_watch_id_ = -1;
+    int next_engine_watch_id_ = FIRST_ENGINE_FD_ID;
 
     std::uint64_t settle_mask_ = 0;
 
@@ -773,6 +787,10 @@ int main(int argc, char** argv) {
     cfg.partial_refresh_limit = 22;
     cfg.clean_interval_ms = 60000;
     cfg.accumulated_coverage_x100 = 220;
+    // InkChess must participate in normal Kindle suspend and must not leave a
+    // device-global MTK refresh toggle behind after an abrupt SIGKILL.
+    cfg.keep_awake = false;
+    cfg.low_latency_mode = false;
 
     KBGame* kb = kb_create(&cfg);
     if (!kb) {

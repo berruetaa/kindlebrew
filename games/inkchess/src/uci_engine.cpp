@@ -11,6 +11,9 @@
 
 #include <sys/types.h>
 #include <sys/wait.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #include <unistd.h>
 
 namespace inkchess {
@@ -18,6 +21,11 @@ namespace inkchess {
 namespace {
 
 constexpr std::size_t kMaxBufferedOutput = 64U * 1024U;
+
+bool set_cloexec(int fd) {
+    const int flags = fcntl(fd, F_GETFD, 0);
+    return flags >= 0 && fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
+}
 
 bool valid_bestmove_token(std::string_view move) {
     if (move == "(none)" || move == "0000") return true;
@@ -87,6 +95,18 @@ bool UciEngine::start(const std::string& executable, int elo) {
         return false;
     }
 
+    if (!set_cloexec(to_child[0]) || !set_cloexec(to_child[1]) ||
+        !set_cloexec(from_child[0]) || !set_cloexec(from_child[1])) {
+        const std::string why = std::strerror(errno);
+        close(to_child[0]);
+        close(to_child[1]);
+        close(from_child[0]);
+        close(from_child[1]);
+        fail("fcntl(FD_CLOEXEC): " + why);
+        return false;
+    }
+
+    const pid_t parent = getpid();
     const pid_t child = fork();
     if (child < 0) {
         const std::string why = std::strerror(errno);
@@ -99,6 +119,11 @@ bool UciEngine::start(const std::string& executable, int elo) {
     }
 
     if (child == 0) {
+#ifdef __linux__
+        // Stockfish must not survive an abrupt SIGKILL/crash of InkChess.
+        // Compare with the pre-fork parent PID to close the prctl race.
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent) _exit(126);
+#endif
         // Child owns stdin/stdout. Keep diagnostics from filling an unattended
         // pipe: stderr goes to /dev/null.
         int devnull = open("/dev/null", O_WRONLY);

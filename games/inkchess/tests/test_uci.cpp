@@ -1,5 +1,6 @@
 #include <cassert>
 #include <chrono>
+#include <fcntl.h>
 #include <poll.h>
 #include <string>
 #include <thread>
@@ -33,6 +34,8 @@ int main(int argc, char** argv) {
 
     UciEngine engine;
     assert(engine.start(fake, 1600));
+    const int descriptor_flags = fcntl(engine.read_fd(), F_GETFD, 0);
+    assert(descriptor_flags >= 0 && (descriptor_flags & FD_CLOEXEC) != 0);
     pump_until(engine, UciEngine::State::IDLE);
     assert(engine.ready());
 
