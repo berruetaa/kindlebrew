@@ -60,6 +60,11 @@ int main(void) {
            state.current_rota,
            state.is_mtk,
            state.inverted_grayscale);
+    printf("touch swap_axes=%d mirror_x=%d mirror_y=%d can_rotate=%d\n",
+           state.touch_swap_axes,
+           state.touch_mirror_x,
+           state.touch_mirror_y,
+           state.can_rotate);
     printf("linux id=%.16s visible=%ux%u virtual=%ux%u offset=%u,%u\n",
            fix_info.id,
            var_info.xres,

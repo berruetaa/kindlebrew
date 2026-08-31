@@ -269,7 +269,7 @@ case "$command" in
     while [ "$attempt" -lt 30 ]; do
       if grep -q '^READY ' "$input_dir/uinput.log" 2>/dev/null; then ready=1; break; fi
       [ -e "/proc/$input_pid/exe" ] || break
-      sleep 0.1
+      sleep 1
       attempt=$((attempt + 1))
     done
     [ "$ready" -eq 1 ] || die 'input helper did not become ready'
@@ -314,7 +314,7 @@ case "$command" in
     printf 'quit\n' > "$2/input/commands.fifo"
     attempt=0
     while [ "$attempt" -lt 30 ] && [ -e "/proc/$input_pid/exe" ]; do
-      sleep 0.1
+      sleep 1
       attempt=$((attempt + 1))
     done
     [ ! -e "/proc/$input_pid/exe" ] || die 'input helper did not stop after quit'

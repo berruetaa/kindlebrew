@@ -24,6 +24,15 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef KBGE_QA_LOG
+#define KBGE_QA_LOGF(...) do { \
+        fprintf(stderr, "kbge-qa: " __VA_ARGS__); \
+        fflush(stderr); \
+    } while (0)
+#else
+#define KBGE_QA_LOGF(...) do { } while (0)
+#endif
+
 #define KB_MAX_INPUT_DEVICES 16
 #define KB_MAX_TOUCH_SLOTS 16
 
@@ -694,6 +703,8 @@ static void process_syn(KBGame *game, KBInputDev *dev) {
 }
 
 static void process_input_event(KBGame *game, KBInputDev *dev, const struct input_event *ie) {
+    KBGE_QA_LOGF("input fd=%d type=%u code=%u value=%d\n",
+                 dev->fd, (unsigned)ie->type, (unsigned)ie->code, ie->value);
     int slot = dev->slot;
     if (slot < 0 || slot >= KB_MAX_TOUCH_SLOTS) slot = 0;
     KBTouchSlot *s = &dev->slots[slot];
@@ -824,6 +835,9 @@ static int setup_input(KBGame *game) {
     }
 
     for (size_t i = 0; i < count && k->input_count < KB_MAX_INPUT_DEVICES; ++i) {
+        KBGE_QA_LOGF("scan path=%s type=0x%08x matched=%d fd=%d name=%s\n",
+                     scan[i].path, scan[i].type, scan[i].matched ? 1 : 0,
+                     scan[i].fd, scan[i].name);
         if (!scan[i].matched || scan[i].fd < 0) continue;
         KBInputDev *d = &k->input[k->input_count++];
         memset(d, 0, sizeof(*d));
@@ -839,6 +853,10 @@ static int setup_input(KBGame *game) {
             unsigned int ycode = absinfo_for(d->fd, ABS_MT_POSITION_Y, ABS_Y, &d->yinfo);
             d->has_mt = xcode == ABS_MT_POSITION_X && ycode == ABS_MT_POSITION_Y;
             d->has_abs = true;
+            KBGE_QA_LOGF("input adopted fd=%d type=0x%08x touch=1 has_mt=%d x=%d..%d y=%d..%d\n",
+                         d->fd, d->type, d->has_mt ? 1 : 0,
+                         d->xinfo.minimum, d->xinfo.maximum,
+                         d->yinfo.minimum, d->yinfo.maximum);
             if (game->config.grab_touch) {
                 if (ioctl(d->fd, EVIOCGRAB, 1) == 0) {
                     d->grabbed = true;
