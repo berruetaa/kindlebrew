@@ -63,10 +63,26 @@ static int emit_position(int fd, int x, int y) {
     return 0;
 }
 
+static int emit_contact_position(int fd, int x, int y) {
+    /*
+     * The input core suppresses an ABS report when it equals the device's
+     * previous value.  A long-lived uinput device can therefore omit one
+     * axis on the first frame seen by a newly launched app.  Prime both axes
+     * with a different in-range value, then publish the requested position;
+     * KBGE only consumes the final values at SYN_REPORT.
+     */
+    const int probe_x = x == 0 ? 1 : 0;
+    const int probe_y = y == 0 ? 1 : 0;
+    return emit_position(fd, probe_x, probe_y) != 0 ||
+                   emit_position(fd, x, y) != 0
+               ? -1
+               : 0;
+}
+
 static int touch_down(int fd, int x, int y, int tracking_id) {
     if (emit_event(fd, EV_ABS, ABS_MT_SLOT, 0) != 0 ||
         emit_event(fd, EV_ABS, ABS_MT_TRACKING_ID, tracking_id) != 0 ||
-        emit_position(fd, x, y) != 0 ||
+        emit_contact_position(fd, x, y) != 0 ||
         emit_event(fd, EV_KEY, BTN_TOUCH, 1) != 0) {
         return -1;
     }
