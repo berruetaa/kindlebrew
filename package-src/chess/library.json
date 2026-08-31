@@ -3,6 +3,6 @@
   "name": "Ink Chess",
   "author": "Kindlebrew",
   "document_name": "Ink-Chess.sh",
-  "legacy_document_names": ["GnomeChess.sh"],
+  "legacy_document_names": [],
   "cover": null
 }
