@@ -608,20 +608,35 @@ static void gesture_up(KBGame *game, int id, int x, int y, uint64_t now) {
     if ((unsigned)distance >= swipe_min) {
         ev.type = KB_EVENT_SWIPE;
         kb_event_push(game, &ev);
-    } else if (!k->hold_emitted && (unsigned)distance <= slop &&
-               elapsed <= (game->config.tap_timeout_ms ? game->config.tap_timeout_ms : 350U)) {
-        unsigned double_ms = game->config.double_tap_ms ? game->config.double_tap_ms : 450U;
-        bool double_tap = k->last_tap_ms &&
-                          now - k->last_tap_ms <= double_ms &&
-                          (unsigned)dist_chebyshev(k->last_tap_x, k->last_tap_y, x, y) <= slop * 2U;
-        ev.type = double_tap ? KB_EVENT_DOUBLE_TAP : KB_EVENT_TAP;
-        kb_event_push(game, &ev);
-        if (double_tap) {
-            k->last_tap_ms = 0;
+    } else if (!k->hold_emitted && (unsigned)distance <= slop) {
+        const unsigned hold_ms = game->config.hold_ms ? game->config.hold_ms : 650U;
+        if (elapsed >= hold_ms) {
+            // If lift and the hold deadline become readable in the same poll,
+            // classify it here instead of losing the gesture at the boundary.
+            ev.type = KB_EVENT_HOLD;
+            ev.start_x = k->start_x;
+            ev.start_y = k->start_y;
+            kb_event_push(game, &ev);
         } else {
-            k->last_tap_ms = now;
-            k->last_tap_x = x;
-            k->last_tap_y = y;
+            const unsigned tap_ms = game->config.tap_timeout_ms ?
+                                        game->config.tap_timeout_ms : 650U;
+            if (elapsed <= tap_ms) {
+                unsigned double_ms = game->config.double_tap_ms ?
+                                         game->config.double_tap_ms : 450U;
+                bool double_tap = k->last_tap_ms &&
+                                  now - k->last_tap_ms <= double_ms &&
+                                  (unsigned)dist_chebyshev(k->last_tap_x,
+                                                          k->last_tap_y, x, y) <= slop * 2U;
+                ev.type = double_tap ? KB_EVENT_DOUBLE_TAP : KB_EVENT_TAP;
+                kb_event_push(game, &ev);
+                if (double_tap) {
+                    k->last_tap_ms = 0;
+                } else {
+                    k->last_tap_ms = now;
+                    k->last_tap_x = x;
+                    k->last_tap_y = y;
+                }
+            }
         }
     }
 

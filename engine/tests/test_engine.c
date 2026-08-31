@@ -359,9 +359,12 @@ static void test_runtime_services(void) {
     cfg.app_id = "kbgame-tests";
     cfg.width = 32;
     cfg.height = 32;
+    cfg.tap_timeout_ms = 100;
+    cfg.hold_ms = 600;
     KBGame *a = kb_create(&cfg);
     KBGame *b = kb_create(&cfg);
     assert(a && b);
+    assert(a->config.tap_timeout_ms == 600);
 
     kb_rng_seed(a, 0x12345678ULL);
     kb_rng_seed(b, 0x12345678ULL);

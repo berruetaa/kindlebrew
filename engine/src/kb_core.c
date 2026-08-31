@@ -22,7 +22,7 @@ void kb_config_defaults(KBConfig *config) {
     config->partial_refresh_limit = 24;
     config->clean_interval_ms = 45000;
     config->accumulated_coverage_x100 = 250;
-    config->tap_timeout_ms = 350;
+    config->tap_timeout_ms = 650;
     config->double_tap_ms = 450;
     config->hold_ms = 650;
 }
@@ -477,6 +477,9 @@ KBGame *kb_create(const KBConfig *config) {
         if (!in.hold_ms) in.hold_ms = game->config.hold_ms;
         game->config = in;
     }
+    /* A stationary contact must never disappear between TAP and HOLD. */
+    if (game->config.tap_timeout_ms < game->config.hold_ms)
+        game->config.tap_timeout_ms = game->config.hold_ms;
 
 #ifdef KB_KINDLE
     game->ops = &kb_backend_kindle_ops;

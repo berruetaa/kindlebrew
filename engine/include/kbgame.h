@@ -102,7 +102,7 @@ typedef struct {
     unsigned clean_interval_ms;
     unsigned accumulated_coverage_x100;
     unsigned tap_slop_px;       /* 0 = DPI-derived */
-    unsigned tap_timeout_ms;    /* 0 = 350 */
+    unsigned tap_timeout_ms;    /* 0 = 650; normalized to at least hold_ms */
     unsigned double_tap_ms;     /* 0 = 450 */
     unsigned hold_ms;           /* 0 = 650 */
     unsigned swipe_min_px;      /* 0 = DPI-derived */
