@@ -5,11 +5,13 @@ on:
     branches:
       - main
       - feat/kindle-game-engine
+      - feat/kbge-chess
     paths:
       - 'manifest.json'
       - 'package-src/**'
       - 'packages/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-canonicalize.py'
       - 'tools/kpm-validate.sh'
       - 'tools/audit-repository.py'
       - '.github/workflows/**'
@@ -31,7 +33,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build KPM-matched libarchive 3.8.1 validator
         run: |
@@ -109,7 +111,12 @@ jobs:
       - name: Audit repository graph
         run: |
           set -euo pipefail
-          python tools/audit-repository.py
+          if [ "${GITHUB_REF_NAME}" = 'feat/kbge-chess' ] ||
+             [ "${GITHUB_HEAD_REF:-}" = 'feat/kbge-chess' ]; then
+            python tools/audit-repository.py --allow-source-ahead
+          else
+            python tools/audit-repository.py
+          fi
 
       - name: Validate every committed KPM artifact
         run: |

@@ -5,12 +5,16 @@ on:
     branches:
       - main
       - feat/kindle-game-engine
+      - feat/kbge-chess
     paths:
       - 'engine/**'
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
+      - 'games/inkchess/**'
       - 'package-src/ink2048/**'
+      - 'package-src/chess/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-canonicalize.py'
       - 'tools/kpm-validate.sh'
       - 'tools/render-game-scriptlet.py'
       - '.github/workflows/engine.yml'
@@ -19,14 +23,17 @@ on:
       - 'engine/**'
       - 'package-src/inklab/**'
       - 'games/ink2048/**'
+      - 'games/inkchess/**'
       - 'package-src/ink2048/**'
+      - 'package-src/chess/**'
       - 'tools/kpm-pack.sh'
+      - 'tools/kpm-canonicalize.py'
       - 'tools/kpm-validate.sh'
       - 'tools/render-game-scriptlet.py'
       - '.github/workflows/engine.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: kbgame-${{ github.ref }}
@@ -37,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build and test core with warnings as errors
         run: |
@@ -45,6 +52,7 @@ jobs:
           make -C engine clean test CFLAGS='-O2 -Werror'
           make -C engine all CFLAGS='-O2 -Werror'
           make -C games/ink2048 clean test CFLAGS='-O2 -Werror'
+          make -C games/inkchess clean test CXXFLAGS='-O2 -Werror'
 
       - name: Validate sh_integration game cover headers
         run: |
@@ -93,7 +101,7 @@ jobs:
           test -f "$fixture/stage/cover.png"
           sh -n "$fixture/stage/scriptlet.sh"
           sh -n "$fixture/stage/library-install.sh"
-          grep -F 'rm -f "/mnt/us/documents/Old-Cover-Fixture.sh"' \
+          grep -F 'remove_managed_document "/mnt/us/documents/Old-Cover-Fixture.sh"' \
             "$fixture/stage/library-install.sh"
           grep -F '# Icon: /mnt/us/extensions/kindlebrew-cover-fixture/cover.png' \
             "$fixture/stage/scriptlet.sh"
@@ -120,12 +128,13 @@ jobs:
           san='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
           make -C engine clean test CFLAGS="$san"
           make -C games/ink2048 clean test CFLAGS="$san"
+          make -C games/inkchess clean test CXXFLAGS="$san"
 
   kindlehf:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -134,7 +143,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y libarchive-tools librsvg2-bin python3-pil qemu-user libc6-armhf-cross
 
       - name: Install KindleModding kindlehf toolchain
         shell: bash
@@ -166,17 +175,75 @@ jobs:
             CROSS_TC=arm-kindlehf-linux-gnueabihf \
             CC="${prefix}gcc" AR="${prefix}ar" RANLIB="${prefix}ranlib" STRIP="${prefix}strip"
 
+      - name: Build pinned Stockfish 18 for kindlehf
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit='cb3d4ee9b47d0c5aae855b12379378ea1439675c'
+          rm -rf build/stockfish-src
+          git clone https://github.com/official-stockfish/Stockfish.git build/stockfish-src
+          git -C build/stockfish-src checkout --detach "$commit"
+          test "$(git -C build/stockfish-src rev-parse HEAD)" = "$commit"
+
+          make -C build/stockfish-src/src -j2 build \
+            ARCH=armv7 COMP=gcc \
+            COMPCXX=arm-kindlehf-linux-gnueabihf-g++ \
+            EXTRALDFLAGS='-static-libstdc++ -static-libgcc -Wl,-Bstatic -latomic -Wl,-Bdynamic -Wl,--as-needed'
+
+          cp build/stockfish-src/src/stockfish build/stockfish-kindlehf
+          arm-kindlehf-linux-gnueabihf-strip --strip-unneeded build/stockfish-kindlehf
+
+          file build/stockfish-kindlehf
+          arm-kindlehf-linux-gnueabihf-readelf -h build/stockfish-kindlehf | grep -E 'Class:|Machine:'
+          arm-kindlehf-linux-gnueabihf-readelf -d build/stockfish-kindlehf | tee /tmp/stockfish-needed.txt
+          ! grep -Eq 'libstdc\+\+|libgcc|libatomic' /tmp/stockfish-needed.txt
+          for lib in libpthread.so.0 librt.so.1 libm.so.6 libc.so.6; do
+            grep -F "Shared library: [$lib]" /tmp/stockfish-needed.txt
+          done
+
+          # QEMU user-mode and the Kindle toolchain's old glibc loader do not
+          # cooperate reliably on current Ubuntu runners. Smoke-test the exact
+          # ARM executable against Ubuntu's armhf runtime instead; the physical
+          # KT6 gate below remains authoritative for Kindle glibc compatibility.
+          test -x /usr/arm-linux-gnueabihf/lib/ld-linux-armhf.so.3
+          set +e
+          printf 'uci\nisready\nposition startpos\neval\nquit\n' \
+            | qemu-arm -cpu cortex-a7 -L /usr/arm-linux-gnueabihf \
+                build/stockfish-kindlehf \
+            > /tmp/stockfish-smoke.txt 2> /tmp/stockfish-smoke.err
+          stockfish_rc=$?
+          set -e
+          if [ "$stockfish_rc" -ne 0 ]; then
+            echo "Stockfish qemu smoke failed with rc=$stockfish_rc"
+            cat /tmp/stockfish-smoke.txt || true
+            cat /tmp/stockfish-smoke.err || true
+            exit "$stockfish_rc"
+          fi
+          grep -F 'uciok' /tmp/stockfish-smoke.txt
+          grep -F 'readyok' /tmp/stockfish-smoke.txt
+          grep -F 'Final evaluation' /tmp/stockfish-smoke.txt
+
       - name: Cross-build engine and reference games
         shell: bash
         run: |
           set -euo pipefail
           make -C engine kindle FBINK_DIR=vendor/FBInk
           make -C games/ink2048 kindle ENGINE_DIR=../../engine FBINK_DIR=../../engine/vendor/FBInk
-          for bin in engine/build/kindle/inklab games/ink2048/build/kindle/ink2048; do
+          make -C games/inkchess kindle ENGINE_DIR=../../engine FBINK_DIR=../../engine/vendor/FBInk
+
+          for bin in engine/build/kindle/inklab games/ink2048/build/kindle/ink2048 games/inkchess/build/kindle/inkchess; do
             file "$bin"
             arm-kindlehf-linux-gnueabihf-readelf -h "$bin" | grep -E 'Class:|Machine:'
-            arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | grep NEEDED || true
-            ! arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | grep -q 'libfbink'
+            arm-kindlehf-linux-gnueabihf-readelf -d "$bin" | tee /tmp/needed.txt
+            ! grep -Eq 'libfbink|libcairo|librsvg|libGL|libX11|libgtk' /tmp/needed.txt
+          done
+
+          arm-kindlehf-linux-gnueabihf-readelf -d games/inkchess/build/kindle/inkchess | tee /tmp/inkchess-needed.txt
+          ! grep -Eq 'libstdc\+\+|libgcc|libatomic' /tmp/inkchess-needed.txt
+
+          test "$(find games/inkchess/build/assets -maxdepth 1 -name '*.r8a8' -type f | wc -l)" -eq 12
+          for asset in games/inkchess/build/assets/*.r8a8; do
+            test "$(wc -c < "$asset")" -eq 32768
           done
 
       - name: Assemble InkLab KPM package
@@ -260,35 +327,86 @@ jobs:
           PY
           sha256sum packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
 
-      - name: Publish generated KPM packages
-        if: github.event_name == 'push'
+      - name: Assemble Ink Chess KPM package
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add packages/inklab/artifacts/inklab_0.1.0_kindlehf.kpkg \
-                  packages/ink2048/artifacts/ink2048_1.0.0_kindlehf.kpkg
-          if git diff --cached --quiet; then
-            echo 'Generated packages unchanged.'
-            exit 0
-          fi
-          git commit -m 'build: package KBGE reference titles'
-          branch="${GITHUB_REF_NAME}"
-          for attempt in 1 2 3; do
-            if git pull --rebase origin "$branch" && git push origin "HEAD:$branch"; then
-              exit 0
-            fi
-            git rebase --abort 2>/dev/null || true
-            sleep $((attempt * 2))
-          done
-          echo 'Failed to publish generated packages after 3 attempts.' >&2
-          exit 1
+          rm -rf build/chess-kpkg
+          mkdir -p build/chess-kpkg/payload/assets build/artifacts
+
+          cp package-src/chess/manifest.json build/chess-kpkg/manifest.json
+          cp package-src/chess/install.sh build/chess-kpkg/install.sh
+          cp package-src/chess/launch.sh build/chess-kpkg/launch.sh
+          cp package-src/chess/uninstall.sh build/chess-kpkg/uninstall.sh
+          cp package-src/chess/LICENSE build/chess-kpkg/LICENSE
+          cp package-src/chess/SOURCE.txt build/chess-kpkg/SOURCE.txt
+
+          cp games/inkchess/third_party/chess-library.LICENSE \
+            build/chess-kpkg/CHESS-LIBRARY-LICENSE.txt
+          cp games/inkchess/assets/gnome-simple/COPYING.html \
+            build/chess-kpkg/GNOME-PIECES-LICENSE.html
+          cp build/stockfish-src/Copying.txt \
+            build/chess-kpkg/STOCKFISH-LICENSE.txt
+
+          cp games/inkchess/build/kindle/inkchess build/chess-kpkg/payload/inkchess
+          cp build/stockfish-kindlehf build/chess-kpkg/payload/stockfish
+          cp games/inkchess/build/assets/*.r8a8 build/chess-kpkg/payload/assets/
+
+          chmod 755 build/chess-kpkg/install.sh build/chess-kpkg/launch.sh \
+            build/chess-kpkg/uninstall.sh build/chess-kpkg/payload/inkchess \
+            build/chess-kpkg/payload/stockfish
+
+          python tools/render-game-scriptlet.py \
+            --package-source package-src/chess \
+            --stage-dir build/chess-kpkg
+          chmod 755 build/chess-kpkg/scriptlet.sh build/chess-kpkg/library-install.sh
+
+          bash tools/kpm-pack.sh \
+            build/chess-kpkg \
+            build/artifacts/chess_2.0.0_kindlehf.kpkg
+
+          bash tools/kpm-validate.sh build/artifacts/chess_2.0.0_kindlehf.kpkg
+          bash tools/kpm-pack.sh build/chess-kpkg /tmp/chess-repro.kpkg
+          cmp build/artifacts/chess_2.0.0_kindlehf.kpkg /tmp/chess-repro.kpkg
+
+          python - <<'PY'
+          import json
+          import tarfile
+
+          p='build/artifacts/chess_2.0.0_kindlehf.kpkg'
+          with tarfile.open(p, 'r:gz') as t:
+              names=set(t.getnames())
+              required={
+                  'manifest.json','library.json','install.sh','launch.sh',
+                  'uninstall.sh','LICENSE','SOURCE.txt','scriptlet.sh',
+                  'library-install.sh','payload/inkchess','payload/stockfish',
+                  'CHESS-LIBRARY-LICENSE.txt','GNOME-PIECES-LICENSE.html',
+                  'STOCKFISH-LICENSE.txt'
+              }
+              missing=required-names
+              assert not missing, missing
+              assets=sorted(n for n in names if n.startswith('payload/assets/') and n.endswith('.r8a8'))
+              assert len(assets) == 12, assets
+              for asset in assets:
+                  assert t.getmember(asset).size == 32768, (asset, t.getmember(asset).size)
+              m=json.load(t.extractfile('manifest.json'))
+          assert m['manifest_version'] == 2
+          assert m['id'] == 'chess'
+          assert m['version'] == [2,0,0]
+          assert m['supported_platforms'] == ['kindlehf']
+          print('validated', p)
+          PY
+
+          sha256sum build/artifacts/chess_2.0.0_kindlehf.kpkg
 
       - name: Upload Kindle reference binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kbge-kindlehf-reference-binaries
           path: |
             engine/build/kindle/inklab
             games/ink2048/build/kindle/ink2048
+            games/inkchess/build/kindle/inkchess
+            build/stockfish-kindlehf
+            games/inkchess/build/assets/*.r8a8
+            build/artifacts/chess_2.0.0_kindlehf.kpkg

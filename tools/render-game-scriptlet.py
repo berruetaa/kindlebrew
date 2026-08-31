@@ -111,11 +111,11 @@ def render_library_installer(
     install_dir = f"/mnt/us/extensions/kindlebrew-{package_id}"
     document_path = f"/mnt/us/documents/{document_name}"
     cover_value = cover_filename or ""
+    managed_exec = f'exec /var/local/kmc/bin/kpm launch {package_id} "$@"'
     legacy_cleanup = []
     for name in legacy_document_names:
         path = f"/mnt/us/documents/{name}"
-        legacy_cleanup.append(f'    rm -f "{path}" 2>/dev/null || true')
-        legacy_cleanup.append(f'    rm -rf "{path}.sdr" 2>/dev/null || true')
+        legacy_cleanup.append(f'    remove_managed_document "{path}"')
     legacy_cleanup_text = "\n".join(legacy_cleanup) if legacy_cleanup else "    :"
 
     # Every interpolated value has already passed strict filename/id validation.
@@ -125,6 +125,24 @@ set -eu
 TARGET='{install_dir}'
 DOC='{document_path}'
 COVER='{cover_value}'
+EXPECTED_EXEC='{managed_exec}'
+
+is_managed_document() {{
+    [ -f "$1" ] &&
+        grep -Fqx '# DontUseFBInk' "$1" &&
+        grep -Fqx "$EXPECTED_EXEC" "$1"
+}}
+
+remove_managed_document() {{
+    path="$1"
+    [ ! -e "$path" ] && return 0
+    if is_managed_document "$path"; then
+        rm -f "$path"
+        rm -rf "$path.sdr"
+    else
+        echo "Preserving unmanaged Kindle document: $path" >&2
+    fi
+}}
 
 cleanup_legacy_docs() {{
 {legacy_cleanup_text}
@@ -144,6 +162,10 @@ install_library() {{
     fi
     if [ -n "$COVER" ] && [ ! -f "$COVER" ]; then
         echo "Declared Kindlebrew cover is missing: $COVER" >&2
+        exit 1
+    fi
+    if [ -e "$DOC" ] && ! is_managed_document "$DOC"; then
+        echo "Existing Kindle document is unmanaged; refusing to overwrite: $DOC" >&2
         exit 1
     fi
 
@@ -193,8 +215,7 @@ install_library() {{
 uninstall_library() {{
     cleanup_staging
     cleanup_legacy_docs
-    rm -f "$DOC"
-    rm -rf "$DOC.sdr"
+    remove_managed_document "$DOC"
 }}
 
 case "${{1:-install}}" in

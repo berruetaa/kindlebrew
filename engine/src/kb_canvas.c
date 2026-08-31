@@ -121,6 +121,44 @@ void kb_blit_gray8(KBGame *game, int x, int y, const uint8_t *src, int width, in
     kb_damage_add(game, dst, is_mono);
 }
 
+void kb_blit_gray8_alpha(KBGame *game, int x, int y, const uint8_t *src,
+                         const uint8_t *alpha, int width, int height, int src_stride) {
+    if (!game || !game->canvas.pixels || !src || !alpha ||
+        width <= 0 || height <= 0 || src_stride < width) return;
+
+    KBRect dst = kb_rect_clip((KBRect){x,y,width,height},
+                              game->canvas.width, game->canvas.height);
+    if (kb_rect_empty(dst)) return;
+
+    int sx = dst.x - x;
+    int sy = dst.y - y;
+    bool is_mono = true;
+
+    for (int row = 0; row < dst.h; ++row) {
+        size_t src_off = (size_t)(sy + row) * (size_t)src_stride + (size_t)sx;
+        size_t dst_off = (size_t)(dst.y + row) * (size_t)game->canvas.stride +
+                         (size_t)dst.x;
+        const uint8_t *sp = src + src_off;
+        const uint8_t *ap = alpha + src_off;
+        uint8_t *dp = game->canvas.pixels + dst_off;
+
+        for (int col = 0; col < dst.w; ++col) {
+            unsigned a = ap[col];
+            if (a == 255U) {
+                dp[col] = sp[col];
+            } else if (a != 0U) {
+                unsigned inv = 255U - a;
+                unsigned mixed = (unsigned)sp[col] * a +
+                                 (unsigned)dp[col] * inv + 127U;
+                dp[col] = (uint8_t)(mixed / 255U);
+            }
+            if (!mono(dp[col])) is_mono = false;
+        }
+    }
+
+    kb_damage_add(game, dst, is_mono);
+}
+
 void kb_invert_rect(KBGame *game, KBRect rect) {
     if (!game || !game->canvas.pixels) return;
     rect = kb_rect_clip(rect, game->canvas.width, game->canvas.height);

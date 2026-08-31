@@ -63,11 +63,13 @@ KWordle v1.5.0 by crizmo. The upstream repository currently declares no software
 
 Upstream: https://github.com/crizmo/KWordle
 
-### Chess
+### Chess / Ink Chess
 
-GNOME Chess from crazy-electron's GPL-licensed GnomeGames4Kindle v1.1. Includes Stockfish 11 and the upstream armhf build. The KPM wrapper downloads and verifies the pinned upstream release at install time.
+Ink Chess 2.0.0 is the native Kindlebrew Game Engine chess title. It bundles Stockfish 18, build-time-rasterized GNOME Chess "simple" pieces, and the required licenses, so installation and first launch do not need Internet access. The previous GNOME Chess 1.1.0 wrapper remains indexed as a legacy downgrade artifact; new installs select Ink Chess 2.0.0.
 
-Upstream: https://github.com/crazy-electron/GnomeGames4Kindle
+The package was validated on a Kindle 11th gen (KT6/Rossini/MT8110, firmware 5.19.5) with no GTK, Cairo, librsvg, OpenGL, X11, or libstdc++ runtime dependency. Physical e-ink ghosting and human fingertip input still require visual/device sign-off; framebuffer and synthetic-input evidence are kept outside the repository by the Kindle lab harness.
+
+Source: `package-src/chess/` and `games/inkchess/`
 
 ### Mines
 

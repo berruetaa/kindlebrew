@@ -20,8 +20,18 @@
 #include <time.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#ifdef KBGE_QA_LOG
+#define KBGE_QA_LOGF(...) do { \
+        fprintf(stderr, "kbge-qa: " __VA_ARGS__); \
+        fflush(stderr); \
+    } while (0)
+#else
+#define KBGE_QA_LOGF(...) do { } while (0)
+#endif
 
 #define KB_MAX_INPUT_DEVICES 16
 #define KB_MAX_TOUCH_SLOTS 16
@@ -57,6 +67,7 @@ typedef struct {
     unsigned char *fb;
     size_t fb_size;
     bool direct_y8;
+    bool has_presented;
     bool keep_awake_set;
     bool mtk_fast_mode_set;
 
@@ -131,10 +142,12 @@ static void harden_input_fd(int fd) {
 static int run_quiet_argv(const char *file, char *const argv[]) {
     if (!file || !argv || !argv[0]) return -1;
 
+    pid_t parent = getpid();
     pid_t pid = fork();
     if (pid < 0) return -1;
 
     if (pid == 0) {
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent) _exit(126);
         int nullfd = open("/dev/null", O_RDWR);
         if (nullfd >= 0) {
             (void)dup2(nullfd, STDIN_FILENO);
@@ -219,6 +232,14 @@ static void refresh_fb_pointer(KBGame *game) {
             last_row + width <= k->fb_size;
     }
 
+    /*
+     * FBInk exposes current_rota as the device rotation, not the backing
+     * buffer layout.  Its Kindle pixel path deliberately leaves coordinates
+     * untouched for every native rotation.  Rossini/Bellatrix normally
+     * reports FB_ROTATE_CCW while keeping a conventional top-left Y8 buffer,
+     * so requiring FB_ROTATE_UR here incorrectly disabled the only drawing
+     * path available in a MINIMAL build without IMAGE support.
+     */
     k->direct_y8 = k->fb &&
                    mapping_covers_screen &&
                    k->fb_state.pixel_format == FBINK_PXFMT_Y8 &&
@@ -227,8 +248,7 @@ static void refresh_fb_pointer(KBGame *game) {
                    k->fb_state.view_width == k->fb_state.screen_width &&
                    k->fb_state.view_height == k->fb_state.screen_height &&
                    k->fb_state.view_hori_origin == 0 &&
-                   k->fb_state.view_vert_origin == 0 &&
-                   k->fb_state.current_rota == FB_ROTATE_UR;
+                   k->fb_state.view_vert_origin == 0;
     game->device.direct_framebuffer_y8 = k->direct_y8;
 }
 
@@ -325,6 +345,7 @@ static int setup_power_events(KBGame *game) {
         return -1;
     }
 
+    pid_t parent = getpid();
     pid_t pid = fork();
     if (pid < 0) {
         close(p[0]);
@@ -334,6 +355,7 @@ static int setup_power_events(KBGame *game) {
     }
 
     if (pid == 0) {
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent) _exit(126);
         close(p[0]);
         if (dup2(p[1], STDOUT_FILENO) < 0) _exit(126);
         close(p[1]);
@@ -595,20 +617,35 @@ static void gesture_up(KBGame *game, int id, int x, int y, uint64_t now) {
     if ((unsigned)distance >= swipe_min) {
         ev.type = KB_EVENT_SWIPE;
         kb_event_push(game, &ev);
-    } else if (!k->hold_emitted && (unsigned)distance <= slop &&
-               elapsed <= (game->config.tap_timeout_ms ? game->config.tap_timeout_ms : 350U)) {
-        unsigned double_ms = game->config.double_tap_ms ? game->config.double_tap_ms : 450U;
-        bool double_tap = k->last_tap_ms &&
-                          now - k->last_tap_ms <= double_ms &&
-                          (unsigned)dist_chebyshev(k->last_tap_x, k->last_tap_y, x, y) <= slop * 2U;
-        ev.type = double_tap ? KB_EVENT_DOUBLE_TAP : KB_EVENT_TAP;
-        kb_event_push(game, &ev);
-        if (double_tap) {
-            k->last_tap_ms = 0;
+    } else if (!k->hold_emitted && (unsigned)distance <= slop) {
+        const unsigned hold_ms = game->config.hold_ms ? game->config.hold_ms : 650U;
+        if (elapsed >= hold_ms) {
+            // If lift and the hold deadline become readable in the same poll,
+            // classify it here instead of losing the gesture at the boundary.
+            ev.type = KB_EVENT_HOLD;
+            ev.start_x = k->start_x;
+            ev.start_y = k->start_y;
+            kb_event_push(game, &ev);
         } else {
-            k->last_tap_ms = now;
-            k->last_tap_x = x;
-            k->last_tap_y = y;
+            const unsigned tap_ms = game->config.tap_timeout_ms ?
+                                        game->config.tap_timeout_ms : 650U;
+            if (elapsed <= tap_ms) {
+                unsigned double_ms = game->config.double_tap_ms ?
+                                         game->config.double_tap_ms : 450U;
+                bool double_tap = k->last_tap_ms &&
+                                  now - k->last_tap_ms <= double_ms &&
+                                  (unsigned)dist_chebyshev(k->last_tap_x,
+                                                          k->last_tap_y, x, y) <= slop * 2U;
+                ev.type = double_tap ? KB_EVENT_DOUBLE_TAP : KB_EVENT_TAP;
+                kb_event_push(game, &ev);
+                if (double_tap) {
+                    k->last_tap_ms = 0;
+                } else {
+                    k->last_tap_ms = now;
+                    k->last_tap_x = x;
+                    k->last_tap_y = y;
+                }
+            }
         }
     }
 
@@ -666,6 +703,8 @@ static void process_syn(KBGame *game, KBInputDev *dev) {
 }
 
 static void process_input_event(KBGame *game, KBInputDev *dev, const struct input_event *ie) {
+    KBGE_QA_LOGF("input fd=%d type=%u code=%u value=%d\n",
+                 dev->fd, (unsigned)ie->type, (unsigned)ie->code, ie->value);
     int slot = dev->slot;
     if (slot < 0 || slot >= KB_MAX_TOUCH_SLOTS) slot = 0;
     KBTouchSlot *s = &dev->slots[slot];
@@ -796,6 +835,9 @@ static int setup_input(KBGame *game) {
     }
 
     for (size_t i = 0; i < count && k->input_count < KB_MAX_INPUT_DEVICES; ++i) {
+        KBGE_QA_LOGF("scan path=%s type=0x%08x matched=%d fd=%d name=%s\n",
+                     scan[i].path, scan[i].type, scan[i].matched ? 1 : 0,
+                     scan[i].fd, scan[i].name);
         if (!scan[i].matched || scan[i].fd < 0) continue;
         KBInputDev *d = &k->input[k->input_count++];
         memset(d, 0, sizeof(*d));
@@ -811,6 +853,10 @@ static int setup_input(KBGame *game) {
             unsigned int ycode = absinfo_for(d->fd, ABS_MT_POSITION_Y, ABS_Y, &d->yinfo);
             d->has_mt = xcode == ABS_MT_POSITION_X && ycode == ABS_MT_POSITION_Y;
             d->has_abs = true;
+            KBGE_QA_LOGF("input adopted fd=%d type=0x%08x touch=1 has_mt=%d x=%d..%d y=%d..%d\n",
+                         d->fd, d->type, d->has_mt ? 1 : 0,
+                         d->xinfo.minimum, d->xinfo.maximum,
+                         d->yinfo.minimum, d->yinfo.maximum);
             if (game->config.grab_touch) {
                 if (ioctl(d->fd, EVIOCGRAB, 1) == 0) {
                     d->grabbed = true;
@@ -925,11 +971,12 @@ static int kindle_present(KBGame *game, const KBRect *rects, int count, KBRefres
     KBKindle *k = (KBKindle *)game->backend;
     if (!k || k->fbfd < 0) return -1;
 
-    if (flashing && !k->fb_state.unreliable_wait_for) {
+    if (flashing && k->has_presented && !k->fb_state.unreliable_wait_for) {
         /* Fence the previous batch before a disruptive full waveform. */
         (void)fbink_wait_for_complete(k->fbfd, LAST_MARKER);
     }
 
+    bool submitted = false;
     for (int i = 0; i < count; ++i) {
         KBRect r = kb_rect_clip(rects[i], game->canvas.width, game->canvas.height);
         if (kb_rect_empty(r)) continue;
@@ -952,7 +999,9 @@ static int kindle_present(KBGame *game, const KBRect *rects, int count, KBRefres
             kb_set_error(game, "fbink_refresh_rect failed: %d", rc);
             return -1;
         }
+        submitted = true;
     }
+    if (submitted) k->has_presented = true;
     return 0;
 }
 
@@ -970,8 +1019,8 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
     maybe_emit_hold(game, kb_now_ms());
     if (kb_event_pop(game, event)) return 1;
 
-    struct pollfd pfds[KB_MAX_INPUT_DEVICES + 1];
-    int map[KB_MAX_INPUT_DEVICES + 1];
+    struct pollfd pfds[KB_MAX_INPUT_DEVICES + 1 + KB_MAX_FD_WATCHES];
+    int map[KB_MAX_INPUT_DEVICES + 1 + KB_MAX_FD_WATCHES];
     int n = 0;
     for (int i = 0; i < k->input_count; ++i) {
         if (k->input[i].fd < 0) continue;
@@ -986,6 +1035,14 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
         pfds[n].events = POLLIN;
         pfds[n].revents = 0;
         map[n] = -1;
+        ++n;
+    }
+    for (int i = 0; i < KB_MAX_FD_WATCHES; ++i) {
+        if (!game->fd_watches[i].active) continue;
+        pfds[n].fd = game->fd_watches[i].fd;
+        pfds[n].events = POLLIN | POLLPRI;
+        pfds[n].revents = 0;
+        map[n] = -(i + 2);
         ++n;
     }
     if (n == 0) return 0;
@@ -1020,11 +1077,30 @@ static int kindle_poll(KBGame *game, KBEvent *event, int timeout_ms) {
 
     if (rc > 0) {
         for (int p = 0; p < n; ++p) {
-            if (map[p] < 0) {
+            if (map[p] == -1) {
                 if (pfds[p].revents & POLLIN) drain_power_events(game);
                 if (pfds[p].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                     teardown_power_events(k);
                     k->power_retry_due_ms = kb_now_ms() + 1000U;
+                }
+                continue;
+            }
+            if (map[p] <= -2) {
+                int wi = -map[p] - 2;
+                unsigned flags = 0;
+                if (pfds[p].revents & (POLLIN | POLLPRI)) flags |= KB_FD_READABLE;
+                if (pfds[p].revents & POLLHUP) flags |= KB_FD_HANGUP;
+                if (pfds[p].revents & POLLERR) flags |= KB_FD_ERROR;
+                if (pfds[p].revents & POLLNVAL) flags |= KB_FD_INVALID;
+                if (flags && wi >= 0 && wi < KB_MAX_FD_WATCHES &&
+                    game->fd_watches[wi].active) {
+                    KBEvent fd_ev;
+                    memset(&fd_ev, 0, sizeof(fd_ev));
+                    fd_ev.type = KB_EVENT_FD;
+                    fd_ev.time_ms = kb_now_ms();
+                    fd_ev.id = game->fd_watches[wi].id;
+                    fd_ev.value = (int)flags;
+                    (void)kb_event_push(game, &fd_ev);
                 }
                 continue;
             }
@@ -1092,6 +1168,9 @@ static int kindle_init(KBGame *game) {
     memset(&k->fb_cfg, 0, sizeof(k->fb_cfg));
     k->fb_cfg.is_quiet = true;
     k->fb_cfg.ignore_alpha = true;
+    /* KBGE owns the full framebuffer; cell-font viewport padding must not
+     * shift direct canvas coordinates (Rossini otherwise reports y = 4). */
+    k->fb_cfg.no_viewport = true;
 
     k->fbfd = fbink_open();
     if (k->fbfd < 0) {

@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 #define KB_VERSION_MAJOR 0
-#define KB_VERSION_MINOR 2
+#define KB_VERSION_MINOR 3
 #define KB_VERSION_PATCH 0
 
 typedef struct KBGame KBGame;
@@ -57,8 +57,16 @@ typedef enum {
     KB_EVENT_RESUME,
     KB_EVENT_RESIZE,
     KB_EVENT_ORIENTATION,
+    KB_EVENT_FD,
     KB_EVENT_QUIT
 } KBEventType;
+
+typedef enum {
+    KB_FD_READABLE = 1u << 0,
+    KB_FD_HANGUP   = 1u << 1,
+    KB_FD_ERROR    = 1u << 2,
+    KB_FD_INVALID  = 1u << 3
+} KBFdEventFlags;
 
 typedef struct {
     KBEventType type;
@@ -94,7 +102,7 @@ typedef struct {
     unsigned clean_interval_ms;
     unsigned accumulated_coverage_x100;
     unsigned tap_slop_px;       /* 0 = DPI-derived */
-    unsigned tap_timeout_ms;    /* 0 = 350 */
+    unsigned tap_timeout_ms;    /* 0 = 650; normalized to at least hold_ms */
     unsigned double_tap_ms;     /* 0 = 450 */
     unsigned hold_ms;           /* 0 = 650 */
     unsigned swipe_min_px;      /* 0 = DPI-derived */
@@ -150,8 +158,11 @@ void kb_damage_mono(KBGame *game, KBRect rect, bool monochrome);
 int kb_present(KBGame *game, KBRefreshMode mode);
 int kb_force_clean(KBGame *game);
 
-/* Events & timers */
+/* Events, external file descriptors & timers */
 int kb_poll_event(KBGame *game, KBEvent *event, int timeout_ms);
+/* Watches are caller-owned; KBGE never closes fd. id must be unique per game. */
+int kb_watch_fd(KBGame *game, int id, int fd);
+int kb_unwatch_fd(KBGame *game, int id);
 int kb_timer_start(KBGame *game, int id, unsigned delay_ms, unsigned repeat_ms);
 int kb_timer_cancel(KBGame *game, int id);
 void kb_timer_cancel_all(KBGame *game);
@@ -174,6 +185,9 @@ void kb_draw_rect(KBGame *game, KBRect rect, int thickness, uint8_t gray);
 void kb_draw_line(KBGame *game, int x0, int y0, int x1, int y1, int thickness, uint8_t gray);
 void kb_fill_circle(KBGame *game, int cx, int cy, int radius, uint8_t gray);
 void kb_blit_gray8(KBGame *game, int x, int y, const uint8_t *src, int width, int height, int src_stride);
+/* Straight-alpha Gray8 compositing. alpha=0 preserves dst; alpha=255 copies src. */
+void kb_blit_gray8_alpha(KBGame *game, int x, int y, const uint8_t *src, const uint8_t *alpha,
+                         int width, int height, int src_stride);
 void kb_invert_rect(KBGame *game, KBRect rect);
 
 /* Built-in public-domain 8x8 ASCII bitmap font. bg_gray < 0 means transparent. */

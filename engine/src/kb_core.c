@@ -22,7 +22,7 @@ void kb_config_defaults(KBConfig *config) {
     config->partial_refresh_limit = 24;
     config->clean_interval_ms = 45000;
     config->accumulated_coverage_x100 = 250;
-    config->tap_timeout_ms = 350;
+    config->tap_timeout_ms = 650;
     config->double_tap_ms = 450;
     config->hold_ms = 650;
 }
@@ -477,6 +477,9 @@ KBGame *kb_create(const KBConfig *config) {
         if (!in.hold_ms) in.hold_ms = game->config.hold_ms;
         game->config = in;
     }
+    /* A stationary contact must never disappear between TAP and HOLD. */
+    if (game->config.tap_timeout_ms < game->config.hold_ms)
+        game->config.tap_timeout_ms = game->config.hold_ms;
 
 #ifdef KB_KINDLE
     game->ops = &kb_backend_kindle_ops;
@@ -581,6 +584,42 @@ int kb_force_clean(KBGame *game) {
     if (!game) return -1;
     kb_damage_add(game, (KBRect){0,0,game->canvas.width,game->canvas.height}, false);
     return kb_present(game, KB_REFRESH_CLEAN);
+}
+
+int kb_watch_fd(KBGame *game, int id, int fd) {
+    if (!game || fd < 0) return -1;
+
+    int free_index = -1;
+    for (int i = 0; i < KB_MAX_FD_WATCHES; ++i) {
+        if (!game->fd_watches[i].active) {
+            if (free_index < 0) free_index = i;
+            continue;
+        }
+        if (game->fd_watches[i].id == id || game->fd_watches[i].fd == fd) {
+            kb_set_error(game, "duplicate fd watch id=%d fd=%d", id, fd);
+            return -1;
+        }
+    }
+    if (free_index < 0) {
+        kb_set_error(game, "too many external fd watches");
+        return -1;
+    }
+
+    game->fd_watches[free_index].id = id;
+    game->fd_watches[free_index].fd = fd;
+    game->fd_watches[free_index].active = true;
+    return 0;
+}
+
+int kb_unwatch_fd(KBGame *game, int id) {
+    if (!game) return -1;
+    for (int i = 0; i < KB_MAX_FD_WATCHES; ++i) {
+        if (game->fd_watches[i].active && game->fd_watches[i].id == id) {
+            memset(&game->fd_watches[i], 0, sizeof(game->fd_watches[i]));
+            return 0;
+        }
+    }
+    return 0;
 }
 
 int kb_poll_event(KBGame *game, KBEvent *event, int timeout_ms) {
