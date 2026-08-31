@@ -24,13 +24,32 @@ def canonical_name(name: str) -> pathlib.PurePosixPath:
 
 
 def is_text_member(name: str) -> bool:
-    return pathlib.PurePosixPath(name).suffix.lower() in {
+    path = pathlib.PurePosixPath(name)
+    return path.name.upper() in {"COPYING", "LICENSE", "NOTICE"} or path.suffix.lower() in {
         ".html",
         ".json",
         ".md",
         ".sh",
         ".txt",
     }
+
+
+def canonical_mode(path: pathlib.PurePosixPath, member: tarfile.TarInfo) -> int:
+    if member.isdir():
+        return 0o755
+
+    source_mode = member.mode & 0o777
+    if source_mode != 0o777 and source_mode & 0o111:
+        return 0o755
+
+    # Windows/DrvFs commonly reports every checked-out file as 0777. Infer
+    # the executable bit from KPM's conventional script and binary locations
+    # so packages remain identical to Linux-built archives.
+    if path.suffix.lower() == ".sh":
+        return 0o755
+    if path.parts and path.parts[0] == "payload" and not path.suffix:
+        return 0o755
+    return 0o644
 
 
 def canonicalize(source: pathlib.Path, destination: pathlib.Path, epoch: int) -> None:
@@ -57,7 +76,7 @@ def canonicalize(source: pathlib.Path, destination: pathlib.Path, epoch: int) ->
                         normalized.type = (
                             tarfile.DIRTYPE if member.isdir() else tarfile.REGTYPE
                         )
-                        normalized.mode = member.mode & 0o777
+                        normalized.mode = canonical_mode(pathlib.PurePosixPath(name), member)
                         normalized.uid = 0
                         normalized.gid = 0
                         normalized.uname = ""
