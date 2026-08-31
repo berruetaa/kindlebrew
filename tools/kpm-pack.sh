@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pack KPM v2 artifacts with the exact upstream helper shipped by Vera/jb.sh (KPM 0.2.2).
-# This deliberately avoids GNU tar/gzip: a previous Kindlebrew build produced
-# KPM error 8 (KPM_LIBARCHIVE_ERROR) even though the archive looked valid on
-# the build host.
-KPM_HELPER_COMMIT="799adf431223d2cfa782a6a4ad07d809f120100b"
+# The Vera/KPM 0.2.2 helper remains the format authority. Its tar output is
+# canonicalized afterward so owner, order and timestamps are reproducible.
+KPM_HELPER_COMMIT='799adf431223d2cfa782a6a4ad07d809f120100b'
+KPM_HELPER_SHA256='10b6d550accba7f8c7daa28f01ab9f44bd1198cd3b6cf407df4590a8e20c330b'
 KPM_HELPER_URL="https://raw.githubusercontent.com/KindleModding/KPM/${KPM_HELPER_COMMIT}/kpm-helper.py"
 
 if [ "$#" -ne 2 ]; then
@@ -15,82 +14,50 @@ fi
 
 src="$1"
 out="$2"
-
-if [ ! -d "$src" ]; then
-    echo "package directory does not exist: $src" >&2
-    exit 2
-fi
-if [ ! -f "$src/manifest.json" ]; then
-    echo "package is missing manifest.json: $src" >&2
+if [ ! -d "$src" ] || [ ! -f "$src/manifest.json" ]; then
+    echo "package directory or manifest is missing: $src" >&2
     exit 2
 fi
 
-mkdir -p "$(dirname "$out")"
-
-previous=''
-if [ -f "$out" ]; then
-    previous="$(mktemp)"
-    cp "$out" "$previous"
-fi
-rm -f "$out"
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+out_dir="$(dirname -- "$out")"
+mkdir -p "$out_dir"
+raw="$(mktemp "$out_dir/.kpm-raw.XXXXXX")"
+canonical="$(mktemp "$out_dir/.kpm-canonical.XXXXXX")"
+cleanup() {
+    rm -f "$raw" "$canonical"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 helper="${RUNNER_TEMP:-/tmp}/kindlebrew-kpm-helper-${KPM_HELPER_COMMIT}.py"
+if [ -f "$helper" ] &&
+   ! printf '%s  %s\n' "$KPM_HELPER_SHA256" "$helper" | sha256sum -c - >/dev/null 2>&1; then
+    rm -f "$helper"
+fi
 if [ ! -f "$helper" ]; then
     curl -fL --retry 3 "$KPM_HELPER_URL" -o "$helper"
 fi
+printf '%s  %s\n' "$KPM_HELPER_SHA256" "$helper" | sha256sum -c -
 
-python "$helper" package pack "$src" "$out" --compression 5
-
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-bash "$SCRIPT_DIR/kpm-validate.sh" "$out"
-
-if [ -n "$previous" ]; then
-    if python - "$previous" "$out" <<'PY'
-import hashlib
-import sys
-import tarfile
-
-def fingerprint(path):
-    result = []
-    with tarfile.open(path, "r:*") as archive:
-        for member in archive.getmembers():
-            if member.isfile():
-                f = archive.extractfile(member)
-                digest = hashlib.sha256(f.read()).hexdigest()
-                kind = "file"
-                target = ""
-            elif member.isdir():
-                digest = ""
-                kind = "dir"
-                target = ""
-            elif member.issym():
-                digest = ""
-                kind = "symlink"
-                target = member.linkname
-            elif member.islnk():
-                digest = ""
-                kind = "hardlink"
-                target = member.linkname
-            else:
-                digest = ""
-                kind = f"type:{member.type!r}"
-                target = member.linkname or ""
-            result.append((member.name, kind, member.mode & 0o7777, target, digest))
-    return sorted(result)
-
-old, new = sys.argv[1:3]
-if fingerprint(old) != fingerprint(new):
-    raise SystemExit(1)
-print("semantic package content unchanged")
-PY
-    then
-        mv "$previous" "$out"
-        previous=''
-        echo "preserved existing artifact bytes to avoid timestamp-only churn"
-    fi
-fi
-if [ -n "$previous" ]; then
-    rm -f "$previous"
+manifest_before="$("${PYTHON:-python3}" -c \
+    'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), sort_keys=True, separators=(",", ":")))' \
+    "$src/manifest.json")"
+"${PYTHON:-python3}" "$helper" package pack "$src" "$raw" --compression 5
+manifest_after="$("${PYTHON:-python3}" -c \
+    'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), sort_keys=True, separators=(",", ":")))' \
+    "$src/manifest.json")"
+if [ "$manifest_before" != "$manifest_after" ]; then
+    echo 'KPM helper unexpectedly changed manifest.json' >&2
+    exit 1
 fi
 
+"${PYTHON:-python3}" "$script_dir/kpm-canonicalize.py" "$raw" "$canonical"
+bash "$script_dir/kpm-validate.sh" "$canonical"
+
+# Same-directory rename is the only operation that replaces a prior artifact.
+mv -f "$canonical" "$out"
+rm -f "$raw"
+trap - EXIT INT TERM
 sha256sum "$out"

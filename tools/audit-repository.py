@@ -2,6 +2,7 @@
 """Cross-check Kindlebrew's repository index, package sources and KPM artifacts."""
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import sys
@@ -22,6 +23,13 @@ def load_json(path: pathlib.Path) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--allow-source-ahead",
+        action="store_true",
+        help="allow package-src version to be newer than the published repository artifact",
+    )
+    args = parser.parse_args()
     repo_path = ROOT / "manifest.json"
     repo = load_json(repo_path)
     if repo.get("manifest_version") != 2:
@@ -106,13 +114,34 @@ def main() -> None:
         if source_manifest is not None:
             if current_inner is None:
                 die(f"{package_id}: no valid current artifact version")
-            for key in ("id", "version", "supported_platforms", "dependencies"):
+            for key in ("id", "supported_platforms", "dependencies"):
                 source_value = source_manifest.get(key, [] if key == "dependencies" else None)
                 inner_value = current_inner.get(key, [] if key == "dependencies" else None)
                 if source_value != inner_value:
                     die(
                         f"{package_id}: package-src manifest {key}={source_value!r} "
                         f"does not match highest artifact {inner_value!r}"
+                    )
+
+            source_version_value = source_manifest.get("version")
+            source_version = (
+                tuple(source_version_value)
+                if isinstance(source_version_value, list)
+                and len(source_version_value) == 3
+                and all(isinstance(v, int) and not isinstance(v, bool) and v >= 0
+                        for v in source_version_value)
+                else None
+            )
+            if source_version != current_version:
+                if not (
+                    args.allow_source_ahead
+                    and source_version is not None
+                    and current_version is not None
+                    and source_version > current_version
+                ):
+                    die(
+                        f"{package_id}: package-src manifest version={source_version_value!r} "
+                        f"does not match highest artifact {list(current_version) if current_version else None!r}"
                     )
 
     committed = {
