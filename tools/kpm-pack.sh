@@ -24,8 +24,13 @@ out_dir="$(dirname -- "$out")"
 mkdir -p "$out_dir"
 raw="$(mktemp "$out_dir/.kpm-raw.XXXXXX")"
 canonical="$(mktemp "$out_dir/.kpm-canonical.XXXXXX")"
+manifest_backup="$(mktemp "$out_dir/.kpm-manifest.XXXXXX")"
+cp "$src/manifest.json" "$manifest_backup"
 cleanup() {
-    rm -f "$raw" "$canonical"
+    if [ -f "$manifest_backup" ]; then
+        cp "$manifest_backup" "$src/manifest.json"
+    fi
+    rm -f "$raw" "$canonical" "$manifest_backup"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -58,6 +63,6 @@ bash "$script_dir/kpm-validate.sh" "$canonical"
 
 # Same-directory rename is the only operation that replaces a prior artifact.
 mv -f "$canonical" "$out"
-rm -f "$raw"
+cleanup
 trap - EXIT INT TERM
 sha256sum "$out"

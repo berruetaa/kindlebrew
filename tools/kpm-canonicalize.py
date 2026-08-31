@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import io
 import os
 import pathlib
 import tarfile
@@ -20,6 +21,16 @@ def canonical_name(name: str) -> pathlib.PurePosixPath:
     if path.is_absolute() or ".." in path.parts or str(path) != name.rstrip("/"):
         fail(f"unsafe or non-canonical archive member: {name!r}")
     return path
+
+
+def is_text_member(name: str) -> bool:
+    return pathlib.PurePosixPath(name).suffix.lower() in {
+        ".html",
+        ".json",
+        ".md",
+        ".sh",
+        ".txt",
+    }
 
 
 def canonicalize(source: pathlib.Path, destination: pathlib.Path, epoch: int) -> None:
@@ -60,7 +71,12 @@ def canonicalize(source: pathlib.Path, destination: pathlib.Path, epoch: int) ->
                             payload = incoming.extractfile(member)
                             if payload is None:
                                 fail(f"cannot read archive member: {member.name}")
-                            outgoing.addfile(normalized, payload)
+                            if is_text_member(name):
+                                data = payload.read().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                                normalized.size = len(data)
+                                outgoing.addfile(normalized, io.BytesIO(data))
+                            else:
+                                outgoing.addfile(normalized, payload)
 
 
 def main() -> None:
