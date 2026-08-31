@@ -57,7 +57,7 @@ $(SESSION_TEST): tests/test_session.cpp src/chess_session.cpp src/chess_session.
 	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_session.cpp src/chess_session.cpp -o $@
 
 $(RENDERER_TEST): tests/test_renderer.cpp src/renderer.cpp src/renderer.hpp src/save_game.hpp third_party/chess.hpp $(ENGINE_DIR)/build/host/libkbgame.a | $(HOST_BUILD)
-	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_renderer.cpp src/renderer.cpp $(ENGINE_DIR)/build/host/libkbgame.a -o $@
+	$(CXX) $(CPPFLAGS) $(COMMON_CPPFLAGS) -DINKCHESS_TEST_ASSETS $(CXXFLAGS) $(COMMON_CXXFLAGS) tests/test_renderer.cpp src/renderer.cpp $(ENGINE_DIR)/build/host/libkbgame.a -o $@
 
 $(ENGINE_DIR)/build/host/libkbgame.a:
 	$(MAKE) -C $(ENGINE_DIR) all

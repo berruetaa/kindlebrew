@@ -58,6 +58,10 @@ class Renderer {
     void draw_interaction(const UiModel& model, std::uint64_t square_mask,
                           KBRefreshMode refresh);
 
+    [[nodiscard]] bool assets_ready() const noexcept { return assets_ready_; }
+    [[nodiscard]] bool healthy() const noexcept { return assets_ready_ && !present_failed_; }
+    [[nodiscard]] const std::string& last_error() const noexcept { return last_error_; }
+
     [[nodiscard]] int square_at(const UiModel& model, int x, int y) const;
     [[nodiscard]] UiButton button_at(int x, int y) const;
     [[nodiscard]] int overlay_option_at(const UiModel& model, int x, int y) const;
@@ -111,6 +115,9 @@ class Renderer {
     std::array<PieceBitmap, 12> pieces_{};
     std::string asset_dir_;
     bool assets_attempted_ = false;
+    bool assets_ready_ = false;
+    bool present_failed_ = false;
+    std::string last_error_;
     int piece_px_ = 0;
     UiModel cached_model_{};
     bool model_cache_valid_ = false;

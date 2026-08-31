@@ -1,6 +1,12 @@
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include <unistd.h>
 
 #include "../src/renderer.hpp"
 
@@ -18,6 +24,24 @@ int main() {
     KBGame* const kb = kb_create(&config);
     assert(kb != nullptr);
 
+    Renderer missing_assets(kb);
+    assert(!missing_assets.assets_ready());
+
+    char asset_dir[] = "/tmp/inkchess-renderer-XXXXXX";
+    assert(mkdtemp(asset_dir) != nullptr);
+    constexpr std::array<const char*, 12> names = {
+        "whitePawn.r8a8", "whiteKnight.r8a8", "whiteBishop.r8a8",
+        "whiteRook.r8a8", "whiteQueen.r8a8", "whiteKing.r8a8",
+        "blackPawn.r8a8", "blackKnight.r8a8", "blackBishop.r8a8",
+        "blackRook.r8a8", "blackQueen.r8a8", "blackKing.r8a8"};
+    const std::vector<char> fixture(32768, static_cast<char>(0x7f));
+    for (const char* name : names) {
+        std::ofstream out(std::string(asset_dir) + "/" + name, std::ios::binary);
+        out.write(fixture.data(), static_cast<std::streamsize>(fixture.size()));
+        assert(out.good());
+    }
+    (void)setenv("INKCHESS_ASSET_DIR", asset_dir, 1);
+
     chess::Board board;
     UiModel model;
     model.board = &board;
@@ -25,7 +49,9 @@ int main() {
     model.secondary = "STOCKFISH 1600";
 
     Renderer renderer(kb);
+    assert(renderer.assets_ready());
     renderer.draw_full(model, KB_REFRESH_CLEAN);
+    assert(renderer.healthy());
 
     const KBStats* stats = kb_stats(kb);
     assert(stats != nullptr);
@@ -56,5 +82,9 @@ int main() {
     assert(canvas->pixels[corner] == 0);
 
     kb_destroy(kb);
+    for (const char* name : names) {
+        assert(unlink((std::string(asset_dir) + "/" + name).c_str()) == 0);
+    }
+    assert(rmdir(asset_dir) == 0);
     return 0;
 }

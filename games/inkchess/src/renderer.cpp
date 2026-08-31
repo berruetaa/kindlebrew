@@ -4,13 +4,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
-#include <iterator>
 
 namespace inkchess {
 
 namespace {
 
-constexpr std::array<const char*, 6> kPieceLetters = {"P", "N", "B", "R", "Q", "K"};
 constexpr std::array<const char*, 12> kPieceFiles = {
     "whitePawn.r8a8", "whiteKnight.r8a8", "whiteBishop.r8a8",
     "whiteRook.r8a8", "whiteQueen.r8a8", "whiteKing.r8a8",
@@ -19,6 +17,23 @@ constexpr std::array<const char*, 12> kPieceFiles = {
 constexpr int kPieceSourceSize = 128;
 constexpr std::size_t kPiecePlaneBytes =
     static_cast<std::size_t>(kPieceSourceSize) * static_cast<std::size_t>(kPieceSourceSize);
+constexpr std::size_t kPieceFileBytes = kPiecePlaneBytes * 2U;
+
+#ifndef INKCHESS_TEST_ASSETS
+constexpr std::array<std::uint32_t, 12> kPieceFnv1a = {
+    0x88fac2b5U, 0xb57ae09aU, 0xba0c133fU, 0x0794f3ffU,
+    0xc79fa46fU, 0x0de00bddU, 0x79e363b3U, 0xf778fc5fU,
+    0x714d8749U, 0xaa68c235U, 0xd0b04e04U, 0x626c1400U};
+
+std::uint32_t fnv1a(const std::vector<std::uint8_t>& bytes) {
+    std::uint32_t hash = 2166136261U;
+    for (const std::uint8_t byte : bytes) {
+        hash ^= byte;
+        hash *= 16777619U;
+    }
+    return hash;
+}
+#endif
 
 }  // namespace
 
@@ -152,25 +167,50 @@ int Renderer::piece_asset_index(chess::Piece piece) {
 void Renderer::load_piece_assets() {
     if (assets_attempted_) return;
     assets_attempted_ = true;
+    assets_ready_ = false;
 
     for (std::size_t i = 0; i < pieces_.size(); ++i) {
         const std::string path = asset_dir_ + "/" + kPieceFiles[i];
-        std::ifstream in(path, std::ios::binary);
-        if (!in) continue;
+        std::ifstream in(path, std::ios::binary | std::ios::ate);
+        if (!in) {
+            last_error_ = "missing piece asset: " + std::string(kPieceFiles[i]);
+            return;
+        }
 
-        std::vector<std::uint8_t> bytes(
-            (std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        if (bytes.size() != kPiecePlaneBytes * 2U) continue;
+        if (in.tellg() != static_cast<std::streamoff>(kPieceFileBytes)) {
+            last_error_ = "invalid piece asset size: " + std::string(kPieceFiles[i]);
+            return;
+        }
+        in.seekg(0, std::ios::beg);
+
+        std::vector<std::uint8_t> bytes(kPieceFileBytes);
+        in.read(reinterpret_cast<char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+        if (!in || in.gcount() != static_cast<std::streamsize>(bytes.size())) {
+            last_error_ = "unreadable piece asset: " + std::string(kPieceFiles[i]);
+            return;
+        }
+#ifndef INKCHESS_TEST_ASSETS
+        if (fnv1a(bytes) != kPieceFnv1a[i]) {
+            last_error_ = "piece asset checksum mismatch: " + std::string(kPieceFiles[i]);
+            return;
+        }
+#endif
 
         auto& bitmap = pieces_[i];
         bitmap.gray.assign(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(kPiecePlaneBytes));
         bitmap.alpha.assign(bytes.begin() + static_cast<std::ptrdiff_t>(kPiecePlaneBytes), bytes.end());
         bitmap.loaded = true;
     }
+
+    assets_ready_ = true;
+    last_error_.clear();
 }
 
 void Renderer::rebuild_piece_cache() {
-    piece_px_ = std::max(16, std::min(l_.cell, l_.cell * 92 / 100));
+    // Rossini's 130 px cells use the build-time 128 px raster at 1:1. Only
+    // smaller layouts resample, avoiding needless blur on the target device.
+    piece_px_ = std::max(16, std::min(l_.cell, kPieceSourceSize));
     const std::size_t target_bytes =
         static_cast<std::size_t>(piece_px_) * static_cast<std::size_t>(piece_px_);
 
@@ -214,27 +254,6 @@ void Renderer::draw_piece(KBRect cell, chess::Piece piece) {
             return;
         }
     }
-
-    // Deliberately boring emergency fallback: if packaged artwork is absent
-    // or corrupt, the game remains playable and diagnostics can identify the
-    // packaging failure instead of presenting an empty board.
-    const int cx = cell.x + cell.w / 2;
-    const int cy = cell.y + cell.h / 2;
-    const int radius = std::max(8, cell.w * 31 / 100);
-    const bool white = piece.color() == chess::Color::WHITE;
-
-    kb_fill_circle(kb_, cx, cy, radius, 0);
-    if (white) {
-        kb_fill_circle(kb_, cx, cy, std::max(2, radius - std::max(3, cell.w / 32)), 248);
-    }
-
-    const int type = static_cast<int>(piece.type());
-    if (type < 0 || type >= static_cast<int>(kPieceLetters.size())) return;
-    const std::string letter = kPieceLetters[static_cast<std::size_t>(type)];
-    const int scale = std::max(2, std::min(10, cell.w / 14));
-    const KBRect m = kb_measure_text8(letter.c_str(), scale);
-    kb_draw_text8(kb_, cx - m.w / 2, cy - m.h / 2, letter.c_str(), scale,
-                  white ? 0 : 255, -1);
 }
 
 void Renderer::draw_square(const UiModel& model, int square) {
@@ -362,18 +381,26 @@ void Renderer::draw_overlay(const UiModel& model) {
 }
 
 void Renderer::draw_full(const UiModel& model, KBRefreshMode refresh) {
+    if (!assets_ready_ || present_failed_) return;
     kb_clear(kb_, 255);
     draw_header(model);
     draw_board(model);
     draw_footer(model);
     draw_overlay(model);
+    if (kb_present(kb_, refresh) != 0) {
+        present_failed_ = true;
+        model_cache_valid_ = false;
+        const char* error = kb_last_error(kb_);
+        last_error_ = error && *error ? error : "framebuffer present failed";
+        return;
+    }
     cached_model_ = model;
     model_cache_valid_ = true;
-    (void)kb_present(kb_, refresh);
 }
 
 void Renderer::draw_interaction(const UiModel& model, std::uint64_t square_mask,
                                  KBRefreshMode refresh) {
+    if (!assets_ready_ || present_failed_) return;
     if (!model_cache_valid_) {
         draw_full(model, refresh);
         return;
@@ -385,8 +412,14 @@ void Renderer::draw_interaction(const UiModel& model, std::uint64_t square_mask,
     }
     if (!same_footer(cached_model_, model)) draw_footer(model);
     if (model.overlay != Overlay::NONE) draw_overlay(model);
+    if (kb_present(kb_, refresh) != 0) {
+        present_failed_ = true;
+        model_cache_valid_ = false;
+        const char* error = kb_last_error(kb_);
+        last_error_ = error && *error ? error : "framebuffer present failed";
+        return;
+    }
     cached_model_ = model;
-    (void)kb_present(kb_, refresh);
 }
 
 int Renderer::square_at(const UiModel& model, int x, int y) const {

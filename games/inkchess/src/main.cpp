@@ -90,6 +90,13 @@ class App {
     }
 
     bool initialize() {
+        if (!renderer_.assets_ready()) {
+            std::fprintf(stderr, "inkchess: asset validation failed: %s\n",
+                         renderer_.last_error().c_str());
+            fatal_error_ = true;
+            return false;
+        }
+
         if (kb_data_path(kb_, "save-v1.txt", save_path_, sizeof(save_path_)) != 0) {
             storage_message_ = "SAVE PATH ERROR";
             return false;
@@ -136,10 +143,11 @@ class App {
 
         renderer_.draw_full(model(), KB_REFRESH_CLEAN);
         service_engine();
-        return true;
+        return check_renderer();
     }
 
     bool running() const noexcept { return running_; }
+    bool failed() const noexcept { return fatal_error_; }
 
     void on_event(const KBEvent& ev) {
         switch (ev.type) {
@@ -182,14 +190,26 @@ class App {
             default:
                 break;
         }
+        (void)check_renderer();
     }
 
     void shutdown() {
-        save_now();
+        if (!save_now()) fatal_error_ = true;
         stop_engine();
     }
 
    private:
+    bool check_renderer() {
+        if (renderer_.healthy()) return true;
+        if (!fatal_error_) {
+            std::fprintf(stderr, "inkchess: renderer failure: %s\n",
+                         renderer_.last_error().c_str());
+        }
+        fatal_error_ = true;
+        running_ = false;
+        return false;
+    }
+
     UiModel model() const {
         UiModel m;
         m.board = &session_.board();
@@ -775,6 +795,7 @@ class App {
     std::string engine_message_;
 
     bool running_ = true;
+    bool fatal_error_ = false;
     bool suspended_ = false;
     bool engine_watch_active_ = false;
     bool engine_synced_ = false;
@@ -820,11 +841,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    int exit_code = 0;
     while (app.running()) {
         KBEvent ev;
         const int rc = kb_poll_event(kb, &ev, -1);
         if (rc < 0) {
             std::fprintf(stderr, "inkchess: event error: %s\n", kb_last_error(kb));
+            exit_code = 1;
             break;
         }
         if (rc == 0) continue;
@@ -832,6 +855,7 @@ int main(int argc, char** argv) {
     }
 
     app.shutdown();
+    if (app.failed()) exit_code = 1;
     kb_destroy(kb);
-    return 0;
+    return exit_code;
 }
